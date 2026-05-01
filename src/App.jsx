@@ -37,6 +37,9 @@ import GuruDashboard from './pages/guru/GuruDashboard';
 import GuruProfil from './pages/guru/GuruProfil';
 import GuruBankSoal from './pages/guru/GuruBankSoal';
 import GuruPeserta from './pages/guru/GuruPeserta';
+import GuruJadwalUjian from './pages/guru/GuruJadwalUjian';
+import GuruMonitorUjian from './pages/guru/GuruMonitorUjian';
+import GuruHasilUjian from './pages/guru/GuruHasilUjian';
 
 // Pengawas Pages
 import PengawasDashboard from './pages/pengawas/PengawasDashboard';
@@ -170,6 +173,9 @@ export default function App() {
           <Route path="soal" element={<GuruBankSoal />} />
           <Route path="soal/input/:id" element={<AdminInputSoal />} />
           <Route path="peserta" element={<GuruPeserta />} />
+          <Route path="jadwal" element={<GuruJadwalUjian />} />
+          <Route path="jadwal/monitor/:id" element={<GuruMonitorUjian />} />
+          <Route path="jadwal/hasil/:id" element={<GuruHasilUjian />} />
         </Route>
         
         {/* ----------------- PENGAWAS ----------------- */}

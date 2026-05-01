@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../store/useAuthStore';
-import { User, FileText, BookOpen, Clock, CalendarDays, PlayCircle, ChevronRight, Loader2 } from 'lucide-react';
+import { User, FileText, BookOpen, Clock, CalendarDays, PlayCircle, ChevronRight, Loader2, KeyRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { format } from 'date-fns';
@@ -19,7 +19,7 @@ export default function SiswaDashboard() {
       
       setLoading(true);
       try {
-        // 1. Ambil detail peserta (terutama kelas_id dan nomor_peserta)
+        // 1. Ambil detail peserta (kelas_id dan nomor_peserta)
         const { data: detail, error: detailErr } = await supabase
           .from('peserta_ujian')
           .select('*, master_kelas(nama_kelas)')
@@ -30,14 +30,12 @@ export default function SiswaDashboard() {
         setStudentDetail(detail);
 
         if (!detail) {
-          console.warn('Data peserta tidak ditemukan untuk ID:', profile.id);
           setLoading(false);
           return;
         }
 
-        // 2. Ambil jadwal ujian yang sesuai dengan kelas siswa
-        // Kita menggunakan filter pada bank_soal.kelas_id untuk memastikan soal yang muncul sesuai kelas siswa
-        const { data: examList, error: examErr } = await supabase
+        // 2. Ujian dari Admin (filter via bank_soal.kelas_id)
+        const { data: adminExams } = await supabase
           .from('jadwal_ujian')
           .select(`
             *,
@@ -47,11 +45,32 @@ export default function SiswaDashboard() {
             )
           `)
           .eq('bank_soal.kelas_id', detail.kelas_id)
-          .eq('status_ujian', 'aktif') // Hanya tampilkan yang aktif sesuai permintaan
-          .order('tanggal', { ascending: true });
+          .is('guru_id', null) // Ujian admin tidak punya guru_id
+          .eq('status_ujian', 'aktif')
+          .order('waktu_mulai', { ascending: true });
 
-        if (examErr) throw examErr;
-        setExams(examList || []);
+        // 3. Ujian dari Guru (filter via jadwal_ujian.kelas_id)
+        const { data: guruExams } = await supabase
+          .from('jadwal_ujian')
+          .select(`
+            *,
+            bank_soal (
+              *,
+              master_mapel (nama_mapel)
+            ),
+            profiles(nama_lengkap)
+          `)
+          .eq('kelas_id', detail.kelas_id)
+          .not('guru_id', 'is', null) // Hanya ujian yang punya guru_id
+          .eq('status_ujian', 'aktif')
+          .order('waktu_mulai', { ascending: true });
+
+        // 4. Gabungkan dan tandai sumbernya
+        const combined = [
+          ...(adminExams || []).map(e => ({ ...e, sumber: 'admin' })),
+          ...(guruExams || []).map(e => ({ ...e, sumber: 'guru' })),
+        ];
+        setExams(combined);
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
       } finally {
@@ -96,50 +115,70 @@ export default function SiswaDashboard() {
 
       {/* Card Ujian */}
       <div className="space-y-4">
-        {exams.map((exam) => (
-          <div key={exam.id} className="bg-white p-5 rounded-2xl shadow-sm hover:shadow-md transition-shadow border border-slate-200 relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-4">
-            
-            {/* Aksen Garis Biru Kiri */}
-            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-blue-500"></div>
-            
-            <div className="pl-3 flex flex-col gap-1.5">
-              <div className="flex items-center gap-3">
-                <h4 className="text-base font-bold text-slate-800">{exam.nama_ujian}</h4>
-                <span className={`px-3 py-1 text-xs font-semibold rounded-full border ${
-                  exam.status_ujian === 'aktif' 
-                    ? 'bg-green-50 text-green-600 border-green-100' 
-                    : 'bg-blue-50 text-blue-600 border-blue-100'
-                }`}>
-                  {exam.status_ujian === 'aktif' ? 'Sedang Berlangsung' : 'Belum Mulai'}
-                </span>
-              </div>
-              <p className="text-sm text-slate-600 font-medium mb-1">{exam.bank_soal?.master_mapel?.nama_mapel}</p>
+        {exams.map((exam) => {
+          const isGuru = exam.sumber === 'guru';
+          return (
+            <div key={exam.id} className="bg-white p-5 rounded-2xl shadow-sm hover:shadow-md transition-shadow border border-slate-200 relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-4">
               
-              <div className="flex items-center text-xs text-slate-500 gap-4 mt-1">
-                <span className="flex items-center gap-1.5 font-medium"><Clock className="w-3.5 h-3.5" /> {exam.durasi_menit} Menit</span>
-                <span className="flex items-center gap-1.5 font-medium">
-                  <CalendarDays className="w-3.5 h-3.5" /> 
-                  {format(new Date(exam.waktu_mulai), 'dd MMM yyyy, HH:mm', { locale: id })}
-                </span>
+              {/* Aksen Garis Kiri — biru=admin, hijau=guru */}
+              <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${isGuru ? 'bg-emerald-500' : 'bg-blue-500'}`}></div>
+              
+              <div className="pl-3 flex flex-col gap-1.5">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <h4 className="text-base font-bold text-slate-800">{exam.nama_ujian}</h4>
+                  <span className={`px-3 py-1 text-xs font-semibold rounded-full border ${
+                    isGuru
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-blue-50 text-blue-600 border-blue-100'
+                  }`}>
+                    {isGuru ? '📝 Ulangan Harian' : '🏫 Ujian Resmi'}
+                  </span>
+                  <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-green-100 text-green-700 border border-green-200">
+                    Sedang Berlangsung
+                  </span>
+                  {isGuru && (
+                    <span className="px-2 py-0.5 text-[10px] font-black rounded-full bg-amber-100 text-amber-700 border border-amber-200 flex items-center gap-1 uppercase tracking-tighter">
+                      <KeyRound className="w-3 h-3" /> Token Diperlukan
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-slate-600 font-medium">{exam.bank_soal?.master_mapel?.nama_mapel}</p>
+                {isGuru && exam.profiles && (
+                  <p className="text-[12px] text-slate-400 font-medium">Oleh: {exam.profiles.nama_lengkap}</p>
+                )}
+                <div className="flex items-center text-xs text-slate-500 gap-4 mt-1">
+                  <span className="flex items-center gap-1.5 font-medium"><Clock className="w-3.5 h-3.5" /> {exam.durasi_menit} Menit</span>
+                  {exam.waktu_mulai && (
+                    <span className="flex items-center gap-1.5 font-medium">
+                      <CalendarDays className="w-3.5 h-3.5" /> 
+                      {format(new Date(exam.waktu_mulai), 'dd MMM yyyy, HH:mm', { locale: id })}
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
 
-            <div className="pl-3 md:pl-0 mt-2 md:mt-0">
-              <button 
-                onClick={() => navigate(`/siswa/ujian/${exam.id}`)}
-                className="w-full md:w-auto flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white py-2.5 px-6 rounded-xl text-sm font-semibold transition-all shadow-md hover:shadow-blue-600/20 active:scale-95 disabled:bg-slate-300 disabled:shadow-none"
-              >
-                <PlayCircle className="w-4 h-4" />
-                Mulai Ujian
-                <ChevronRight className="w-4 h-4 ml-1" />
-              </button>
+              <div className="pl-3 md:pl-0 mt-2 md:mt-0">
+                <button 
+                  onClick={() => navigate(`/siswa/ujian/${exam.id}`)}
+                  className={`w-full md:w-auto flex items-center justify-center gap-2 text-white py-2.5 px-6 rounded-xl text-sm font-semibold transition-all shadow-md active:scale-95 ${
+                    isGuru
+                      ? 'bg-emerald-600 hover:bg-emerald-700 hover:shadow-emerald-600/20'
+                      : 'bg-blue-600 hover:bg-blue-700 hover:shadow-blue-600/20'
+                  }`}
+                >
+                  <PlayCircle className="w-4 h-4" />
+                  Mulai Ujian
+                  <ChevronRight className="w-4 h-4 ml-1" />
+                </button>
+              </div>
+              
             </div>
-            
-          </div>
-        ))}
+          );
+        })}
         {exams.length === 0 && (
           <div className="text-center py-10 bg-white rounded-2xl border border-dashed border-slate-300">
-            <p className="text-slate-500">Belum ada jadwal ujian yang tersedia untuk kelas Anda.</p>
+            <BookOpen className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+            <p className="text-slate-500 font-medium">Belum ada ujian aktif untuk kelas Anda saat ini.</p>
           </div>
         )}
       </div>

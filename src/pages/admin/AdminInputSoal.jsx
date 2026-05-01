@@ -90,18 +90,17 @@ export default function AdminInputSoal() {
     try {
       let finalImageUrl = formData.gambar_url;
 
-      // Upload image if selected
+      // Konversi gambar ke Base64 (tidak perlu Storage bucket)
       if (formData.gambar instanceof File) {
-        const fileExt = formData.gambar.name.split('.').pop();
-        const fileName = `${id}_${Date.now()}.${fileExt}`;
-        const { error: uploadError } = await supabase.storage
-          .from('media_soal')
-          .upload(fileName, formData.gambar);
-
-        if (uploadError) throw new Error('Gagal mengunggah gambar');
-        
-        const { data: urlData } = supabase.storage.from('media_soal').getPublicUrl(fileName);
-        finalImageUrl = urlData.publicUrl;
+        if (formData.gambar.size > 2 * 1024 * 1024) {
+          throw new Error('Ukuran gambar maksimal 2MB.');
+        }
+        finalImageUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(formData.gambar);
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(new Error('Gagal membaca file gambar.'));
+        });
       }
 
       const payload = {

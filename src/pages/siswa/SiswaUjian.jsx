@@ -4,6 +4,7 @@ import { KeyRound, Maximize, ShieldAlert, AlertTriangle, ChevronRight, ChevronLe
 import { useAuthStore } from '../../store/useAuthStore';
 import { supabase } from '../../lib/supabase';
 import { useConfirmStore } from '../../store/useConfirmStore';
+import { verifyRotatingToken } from '../../utils/tokenUtils';
 
 export default function SiswaUjian() {
   const { showConfirm } = useConfirmStore();
@@ -88,6 +89,8 @@ export default function SiswaUjian() {
       document.exitFullscreen().catch((err) => console.error(err));
     }
   }, [session]);
+
+  // Violation: kick back to token screen (not permanent block)
 
   useEffect(() => {
     if (!isExamStarted) return;
@@ -239,25 +242,12 @@ export default function SiswaUjian() {
 
     setIsLoading(true);
 
-    // Ambil token TERBARU dari DB untuk mengantisipasi fitur auto-rotate
-    const { data: latestExam, error: fetchErr } = await supabase
-      .from('jadwal_ujian')
-      .select('token')
-      .eq('id', jadwalId)
-      .single();
+    // Verifikasi token berputar (dihitung di sisi klien, tidak perlu DB)
+    const isValid = verifyRotatingToken(jadwalId, tokenInput);
 
-    if (fetchErr || !latestExam) {
+    if (!isValid) {
       setIsLoading(false);
-      setViolationMessage('Gagal memverifikasi token. Silakan coba lagi.');
-      return;
-    }
-
-    const actualToken = (latestExam.token || '').replace(/\s/g, '').toUpperCase();
-    const userToken = tokenInput.replace(/\s/g, '').toUpperCase();
-
-    if (userToken !== actualToken) {
-      setIsLoading(false);
-      setViolationMessage('Token ujian tidak valid. Pastikan Anda memasukkan token yang benar.');
+      setViolationMessage('Token tidak valid atau sudah kedaluwarsa. Minta token terbaru ke guru Anda.');
       return;
     }
 

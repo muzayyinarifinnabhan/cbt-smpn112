@@ -18,40 +18,36 @@ export default function GuruProfil() {
       }
 
       const file = event.target.files[0];
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${profile.id}-${Math.random()}.${fileExt}`;
-      const filePath = `${fileName}`;
 
-      // 1. Upload to Supabase Storage (bucket 'avatars')
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, file, { upsert: true });
-
-      if (uploadError) {
-        throw uploadError;
+      // Validasi ukuran file (max 2MB)
+      if (file.size > 2 * 1024 * 1024) {
+        throw new Error('Ukuran gambar maksimal 2MB.');
       }
 
-      // 2. Get Public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(filePath);
+      // 1. Konversi gambar ke Base64 (tidak perlu Storage bucket)
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+      });
 
-      // 3. Update Profiles Table
+      // 2. Simpan langsung ke kolom avatar_url di tabel profiles
       const { error: updateError } = await supabase
         .from('profiles')
-        .update({ avatar_url: publicUrl })
+        .update({ avatar_url: base64 })
         .eq('id', profile.id);
 
       if (updateError) {
         throw updateError;
       }
 
-      // 4. Update Local Zustand Store
-      setAuth(useAuthStore.getState().session, { ...profile, avatar_url: publicUrl });
+      // 3. Update Local Zustand Store agar langsung tampil
+      setAuth(useAuthStore.getState().session, { ...profile, avatar_url: base64 });
 
       toast.success('Foto profil berhasil diperbarui!');
     } catch (error) {
-      toast.error('Gagal mengunggah gambar: ' + error.message);
+      toast.error('Gagal mengubah foto: ' + error.message);
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';

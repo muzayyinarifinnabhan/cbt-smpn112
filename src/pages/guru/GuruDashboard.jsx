@@ -1,92 +1,64 @@
 import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '../../store/useAuthStore';
-import { BookOpen, Calendar, Users, Award, Bell } from 'lucide-react';
+import { Calendar, Users, Award, PlayCircle, List, Eye, ChevronRight } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { clsx } from 'clsx';
+import { Link } from 'react-router-dom';
 
 export default function GuruDashboard() {
   const { profile } = useAuthStore();
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    totalUjian: 0,
-    ujianAktif: 0,
-    totalPeserta: 0,
-    rataNilai: 0
-  });
+  const [stats, setStats] = useState({ totalBankSoal: 0, ujianAktif: 0, totalPeserta: 0, rataNilai: 0 });
+  const [ujianAktifList, setUjianAktifList] = useState([]);
 
   useEffect(() => {
-    fetchStats();
-
-    // Set up Realtime subscriptions for Jadwal Ujian and Hasil Nilai
-    // Whenever an exam changes status, or a student finishes an exam, re-calculate the Guru's dashboard stats.
-    const channel = supabase.channel('guru_dashboard_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'jadwal_ujian' }, () => {
-        fetchStats();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'hasil_nilai' }, () => {
-        fetchStats();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    if (profile?.id) fetchStats();
   }, [profile]);
 
   const fetchStats = async () => {
-    if (!profile) return;
     setLoading(true);
     try {
-      // Di aplikasi nyata, kueri ini digabungkan secara spesifik untuk `guru_id` di bank soal,
-      // tetapi untuk kesederhanaan dan mengikuti placeholder, kita fetch semua aktivitas relevan (atau count)
-      
-      // 1. Total Ujian (Jadwal Ujian yang menggunakan bank soal milik guru ini)
-      const { count: totalJadwal } = await supabase
-        .from('jadwal_ujian')
-        .select(`id, bank_soal!inner(guru_id)`, { count: 'exact', head: true })
-        .eq('bank_soal.guru_id', profile.id);
+      // 1. Total Bank Soal milik guru ini
+      const { count: bsCount } = await supabase
+        .from('bank_soal')
+        .select('id', { count: 'exact', head: true })
+        .eq('guru_id', profile.id);
 
-      // 2. Ujian Aktif (Status 1 yang milik guru ini)
-      const { count: aktifJadwal } = await supabase
+      // 2. Jadwal ujian aktif milik guru ini
+      const { data: aktifData } = await supabase
         .from('jadwal_ujian')
-        .select(`id, bank_soal!inner(guru_id)`, { count: 'exact', head: true })
-        .eq('status', 1)
-        .eq('bank_soal.guru_id', profile.id);
+        .select('id, nama_ujian, durasi_menit, master_kelas(nama_kelas), bank_soal(master_mapel(nama_mapel))')
+        .eq('guru_id', profile.id)
+        .eq('status_ujian', 'aktif');
 
-      // 3. Total Peserta (Siswa yang ikut ujian guru ini)
-      // Ini agak kompleks dengan relasi tabel, sebagai placeholder/rataan kita hitung log ujian_aktif 
-      // yang terikat ke jadwal ujian guru ini.
+      setUjianAktifList(aktifData || []);
+
+      // 3. Hitung total peserta & rata-rata nilai dari semua jadwal guru ini
       const { data: allJadwal } = await supabase
         .from('jadwal_ujian')
-        .select(`id, bank_soal!inner(guru_id)`)
-        .eq('bank_soal.guru_id', profile.id);
-        
+        .select('id')
+        .eq('guru_id', profile.id);
+
       let pesertaCount = 0;
       let rataRata = 0;
-
-      if (allJadwal && allJadwal.length > 0) {
-        const jadwalIds = allJadwal.map(j => j.id);
-        
-        // Count peserta based on hasil_nilai for these exams
+      if (allJadwal?.length > 0) {
+        const ids = allJadwal.map(j => j.id);
         const { data: hasilData } = await supabase
           .from('hasil_nilai')
           .select('nilai_total')
-          .in('jadwal_ujian_id', jadwalIds);
-
-        if (hasilData && hasilData.length > 0) {
-           pesertaCount = hasilData.length;
-           const totalNilai = hasilData.reduce((sum, row) => sum + Number(row.nilai_total || 0), 0);
-           rataRata = Math.round(totalNilai / pesertaCount);
+          .in('jadwal_ujian_id', ids);
+        if (hasilData?.length > 0) {
+          pesertaCount = hasilData.length;
+          rataRata = Math.round(hasilData.reduce((s, r) => s + Number(r.nilai_total || 0), 0) / pesertaCount);
         }
       }
 
       setStats({
-        totalUjian: totalJadwal || 0,
-        ujianAktif: aktifJadwal || 0,
+        totalBankSoal: bsCount || 0,
+        ujianAktif: aktifData?.length || 0,
         totalPeserta: pesertaCount,
-        rataNilai: rataRata
+        rataNilai: rataRata,
       });
-
     } catch (error) {
       console.error('Error fetching guru stats:', error);
     } finally {
@@ -94,69 +66,106 @@ export default function GuruDashboard() {
     }
   };
 
-  const cards = [
-    {
-      title: 'Total Ujian',
-      value: stats.totalUjian,
-      icon: BookOpen,
-      color: 'bg-blue-500',
-    },
-    {
-      title: 'Ujian Aktif',
-      value: stats.ujianAktif,
-      icon: Calendar,
-      color: 'bg-green-500',
-    },
-    {
-      title: 'Total Peserta',
-      value: stats.totalPeserta,
-      icon: Users,
-      color: 'bg-purple-500',
-    },
-    {
-      title: 'Rata-rata Nilai',
-      value: stats.rataNilai,
-      icon: Award,
-      color: 'bg-orange-500',
-    }
+  const statCards = [
+    { title: 'Bank Soal', value: stats.totalBankSoal, icon: List, color: 'bg-blue-500', href: '/guru/soal' },
+    { title: 'Ujian Aktif', value: stats.ujianAktif, icon: PlayCircle, color: 'bg-emerald-500', href: '/guru/jadwal' },
+    { title: 'Total Peserta', value: stats.totalPeserta, icon: Users, color: 'bg-purple-500', href: '/guru/peserta' },
+    { title: 'Rata-rata Nilai', value: stats.rataNilai, icon: Award, color: 'bg-orange-500', href: '/guru/nilai' },
   ];
 
   return (
     <div className="min-h-full bg-[#f8fafc] animate-in fade-in duration-500 p-6 md:p-8">
       
-      {/* Header section identical to screenshot */}
-      <div className="flex justify-between items-start mb-8">
-        <div>
-          <h1 className="text-[28px] font-bold text-slate-800 tracking-tight leading-none mb-2">
-            Dashboard Guru
-          </h1>
-          <p className="text-[15px] font-medium text-slate-500">
-            Selamat datang, {profile?.nama_lengkap || 'Guru'}
-          </p>
-        </div>
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-[28px] font-bold text-slate-800 tracking-tight leading-none mb-2">Dashboard Guru</h1>
+        <p className="text-[15px] font-medium text-slate-500">
+          Selamat datang, {profile?.nama_lengkap || 'Guru'} 👋
+        </p>
       </div>
 
-      {/* Stats Cards Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {cards.map((card, idx) => (
-          <div 
-            key={idx} 
-            className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center justify-between group hover:shadow-md transition-shadow"
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+        {statCards.map((card, idx) => (
+          <Link to={card.href} key={idx}
+            className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center justify-between group hover:shadow-md hover:border-slate-200 transition-all"
           >
             <div className="flex flex-col gap-1">
-              <span className="text-sm font-semibold text-slate-400">{card.title}</span>
+              <span className="text-[13px] font-semibold text-slate-400">{card.title}</span>
               <span className="text-[32px] font-bold text-slate-800 leading-none">
-                {loading ? (
-                   <div className="h-8 w-12 bg-slate-100 animate-pulse rounded mt-1"></div>
-                ) : (
-                   card.value
-                )}
+                {loading
+                  ? <div className="h-8 w-12 bg-slate-100 animate-pulse rounded mt-1"></div>
+                  : card.value
+                }
               </span>
             </div>
-            <div className={clsx("w-[60px] h-[60px] rounded-[20px] flex items-center justify-center text-white shadow-sm", card.color)}>
-              <card.icon className="w-8 h-8 opacity-90" strokeWidth={2.5} />
+            <div className={clsx("w-[56px] h-[56px] rounded-2xl flex items-center justify-center text-white shadow-sm group-hover:scale-105 transition-transform", card.color)}>
+              <card.icon className="w-7 h-7 opacity-90" strokeWidth={2.5} />
             </div>
+          </Link>
+        ))}
+      </div>
+
+      {/* Ujian Aktif Sekarang */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-6">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+            <h2 className="text-[16px] font-bold text-slate-800">Ujian Aktif Sekarang</h2>
           </div>
+          <Link to="/guru/jadwal" className="text-[13px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1">
+            Lihat Semua <ChevronRight className="w-4 h-4" />
+          </Link>
+        </div>
+
+        {loading ? (
+          <div className="px-6 py-8 text-center text-slate-400">Memuat...</div>
+        ) : ujianAktifList.length === 0 ? (
+          <div className="px-6 py-10 text-center text-slate-400">
+            <Calendar className="w-10 h-10 mx-auto mb-3 opacity-20" />
+            <p className="font-medium text-[14px]">Tidak ada ujian yang sedang aktif.</p>
+            <p className="text-[12px] mt-1">Buka menu <b>Jadwal Ujian</b> untuk mengaktifkan ulangan.</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-50">
+            {ujianAktifList.map(item => (
+              <div key={item.id} className="flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition-colors">
+                <div>
+                  <p className="font-bold text-[14px] text-slate-800">{item.nama_ujian}</p>
+                  <p className="text-[12px] text-slate-500 mt-0.5">
+                    {item.bank_soal?.master_mapel?.nama_mapel} · Kelas {item.master_kelas?.nama_kelas} · {item.durasi_menit} menit
+                  </p>
+                </div>
+                <Link to={`/guru/jadwal/monitor/${item.id}`}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-[12px] font-bold hover:bg-emerald-100 transition-colors"
+                >
+                  <Eye className="w-3.5 h-3.5" /> Monitor
+                </Link>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Shortcut Actions */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[
+          { icon: List, label: 'Kelola Bank Soal', desc: 'Tambah & edit soal ujian', href: '/guru/soal', color: 'text-blue-600 bg-blue-50 border-blue-200' },
+          { icon: Calendar, label: 'Jadwal Ulangan', desc: 'Buat & aktifkan ulangan harian', href: '/guru/jadwal', color: 'text-emerald-600 bg-emerald-50 border-emerald-200' },
+          { icon: Award, label: 'Hasil Nilai', desc: 'Lihat rekap nilai siswa', href: '/guru/nilai', color: 'text-purple-600 bg-purple-50 border-purple-200' },
+        ].map(action => (
+          <Link to={action.href} key={action.label}
+            className="flex items-center gap-4 bg-white border border-slate-200 rounded-2xl p-5 hover:shadow-md hover:border-slate-300 transition-all group"
+          >
+            <div className={clsx("w-12 h-12 rounded-xl flex items-center justify-center border", action.color)}>
+              <action.icon className="w-6 h-6" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-[14px] text-slate-800">{action.label}</p>
+              <p className="text-[12px] text-slate-400 mt-0.5">{action.desc}</p>
+            </div>
+            <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition-colors shrink-0" />
+          </Link>
         ))}
       </div>
 

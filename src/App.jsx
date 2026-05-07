@@ -40,6 +40,10 @@ import GuruPeserta from './pages/guru/GuruPeserta';
 import GuruJadwalUjian from './pages/guru/GuruJadwalUjian';
 import GuruMonitorUjian from './pages/guru/GuruMonitorUjian';
 import GuruHasilUjian from './pages/guru/GuruHasilUjian';
+import GuruDaftarNilai from './pages/guru/GuruDaftarNilai';
+import GuruWaliSiswa from './pages/guru/GuruWaliSiswa';
+import GuruWaliProgres from './pages/guru/GuruWaliProgres';
+import GuruWaliRekap from './pages/guru/GuruWaliRekap';
 
 // Pengawas Pages
 import PengawasDashboard from './pages/pengawas/PengawasDashboard';
@@ -176,6 +180,10 @@ export default function App() {
           <Route path="jadwal" element={<GuruJadwalUjian />} />
           <Route path="jadwal/monitor/:id" element={<GuruMonitorUjian />} />
           <Route path="jadwal/hasil/:id" element={<GuruHasilUjian />} />
+          <Route path="nilai" element={<GuruDaftarNilai />} />
+          <Route path="wali/siswa" element={<GuruWaliSiswa />} />
+          <Route path="wali/progres" element={<GuruWaliProgres />} />
+          <Route path="wali/rekap" element={<GuruWaliRekap />} />
         </Route>
         
         {/* ----------------- PENGAWAS ----------------- */}

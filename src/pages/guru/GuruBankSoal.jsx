@@ -5,8 +5,10 @@ import { Link } from 'react-router-dom';
 import { Plus, Search, Edit2, Trash2, X, FileText, List } from 'lucide-react';
 import { toast } from 'sonner';
 import { clsx } from 'clsx';
+import { useConfirmStore } from '../../store/useConfirmStore';
 
 export default function GuruBankSoal() {
+  const { showConfirm } = useConfirmStore();
   const { profile } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState([]);
@@ -138,17 +140,24 @@ export default function GuruBankSoal() {
     setShowModal(true);
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Yakin ingin menghapus bank soal ini? Semua soal di dalamnya juga akan terhapus.')) return;
-    
-    try {
-      const { error } = await supabase.from('bank_soal').delete().eq('id', id);
-      if (error) throw error;
-      toast.success('Bank soal berhasil dihapus');
-      fetchBankSoal();
-    } catch (error) {
-      toast.error('Gagal menghapus: ' + error.message);
-    }
+  const handleDelete = (id) => {
+    showConfirm({
+      title: 'Hapus Bank Soal',
+      message: 'Yakin ingin menghapus bank soal ini? Semua soal di dalamnya juga akan terhapus secara permanen.',
+      confirmText: 'Hapus',
+      cancelText: 'Batal',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          const { error } = await supabase.from('bank_soal').delete().eq('id', id);
+          if (error) throw error;
+          toast.success('Bank soal berhasil dihapus');
+          fetchBankSoal();
+        } catch (error) {
+          toast.error('Gagal menghapus: ' + error.message);
+        }
+      }
+    });
   };
 
   const handleSubmit = async (e) => {

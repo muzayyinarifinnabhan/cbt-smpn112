@@ -1,70 +1,103 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Award, Download } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { Link, useParams } from 'react-router-dom';
-import { clsx } from 'clsx';
+import { useAuthStore } from '../../store/useAuthStore';
 import { toast } from 'sonner';
+import { ChevronDown, Download, Award } from 'lucide-react';
+import { clsx } from 'clsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
-export default function GuruHasilUjian() {
-  const { id } = useParams(); // jadwal_ujian id
-  const [jadwal, setJadwal] = useState(null);
+export default function GuruWaliRekap() {
+  const { profile } = useAuthStore();
+  const [loadingJadwal, setLoadingJadwal] = useState(true);
+  const [loadingData, setLoadingData] = useState(false);
+  const [jadwalList, setJadwalList] = useState([]);
+  const [selectedJadwalId, setSelectedJadwalId] = useState('');
+  
   const [hasilList, setHasilList] = useState([]);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchData();
-  }, [id]);
+    if (profile?.id) {
+      fetchJadwal();
+    }
+  }, [profile]);
 
-  const fetchData = async () => {
-    setLoading(true);
+  useEffect(() => {
+    if (selectedJadwalId) {
+      fetchHasil(selectedJadwalId);
+    } else {
+      setHasilList([]);
+    }
+  }, [selectedJadwalId]);
+
+  const fetchJadwal = async () => {
+    setLoadingJadwal(true);
     try {
-      // 1. Info jadwal
-      const { data: jadwalData } = await supabase
+      const { data, error } = await supabase
         .from('jadwal_ujian')
-        .select('*, bank_soal(kode_bank_soal, kkm, master_mapel(nama_mapel)), master_kelas(nama_kelas)')
-        .eq('id', id)
-        .single();
-      setJadwal(jadwalData);
-
-      // 2. Hasil nilai (tanpa join peserta_ujian langsung untuk menghindari error relasi)
-      const { data: hasil, error } = await supabase
-        .from('hasil_nilai')
-        .select('*, profiles(nama_lengkap)')
-        .eq('jadwal_ujian_id', id)
-        .order('nilai_total', { ascending: false });
+        .select(`
+          id,
+          nama_ujian,
+          kelas_id,
+          master_kelas(nama_kelas),
+          bank_soal(kkm, master_mapel(nama_mapel))
+        `)
+        .eq('guru_id', profile.id)
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
+      
+      setJadwalList(data || []);
+      if (data && data.length > 0) {
+        setSelectedJadwalId(data[0].id);
+      }
+    } catch (err) {
+      toast.error('Gagal memuat daftar ujian: ' + err.message);
+    } finally {
+      setLoadingJadwal(false);
+    }
+  };
 
-      // 3. Ambil data nomor peserta berdasarkan kelas_id dari jadwal
+  const fetchHasil = async (jadwalId) => {
+    setLoadingData(true);
+    try {
+      const jadwal = jadwalList.find(j => j.id === jadwalId);
+      if (!jadwal?.kelas_id) return;
+
+      const { data: hasil, error: hError } = await supabase
+        .from('hasil_nilai')
+        .select('*, profiles(nama_lengkap)')
+        .eq('jadwal_ujian_id', jadwalId)
+        .order('nilai_total', { ascending: false });
+
+      if (hError) throw hError;
+
       let finalHasil = hasil || [];
-      if (jadwalData?.kelas_id) {
-        const { data: pesertaList } = await supabase
-          .from('peserta_ujian')
-          .select('siswa_id, nomor_peserta')
-          .eq('kelas_id', jadwalData.kelas_id);
-          
-        if (pesertaList) {
-          finalHasil = finalHasil.map(h => {
-            const p = pesertaList.find(pes => pes.siswa_id === h.siswa_id);
-            return {
-              ...h,
-              peserta_ujian: { nomor_peserta: p?.nomor_peserta || '-' }
-            };
-          });
-        }
+      const { data: pesertaList } = await supabase
+        .from('peserta_ujian')
+        .select('siswa_id, nomor_peserta')
+        .eq('kelas_id', jadwal.kelas_id);
+        
+      if (pesertaList) {
+        finalHasil = finalHasil.map(h => {
+          const p = pesertaList.find(pes => pes.siswa_id === h.siswa_id);
+          return {
+            ...h,
+            peserta_ujian: { nomor_peserta: p?.nomor_peserta || '-' }
+          };
+        });
       }
 
       setHasilList(finalHasil);
     } catch (err) {
       toast.error('Gagal memuat hasil: ' + err.message);
     } finally {
-      setLoading(false);
+      setLoadingData(false);
     }
   };
 
-  const kkm = jadwal?.bank_soal?.kkm || 70;
+  const selectedJadwal = jadwalList.find(j => j.id === selectedJadwalId);
+  const kkm = selectedJadwal?.bank_soal?.kkm || 70;
   const avgNilai = hasilList.length > 0
     ? (hasilList.reduce((sum, h) => sum + (h.nilai_total || 0), 0) / hasilList.length).toFixed(1)
     : 0;
@@ -77,11 +110,10 @@ export default function GuruHasilUjian() {
     }
 
     const doc = new jsPDF();
-    const mapel = jadwal?.bank_soal?.master_mapel?.nama_mapel || 'Mapel';
-    const kelasName = jadwal?.master_kelas?.nama_kelas || 'Kelas';
-    const namaUjian = jadwal?.nama_ujian || 'Ujian';
+    const mapel = selectedJadwal?.bank_soal?.master_mapel?.nama_mapel || 'Mapel';
+    const kelasName = selectedJadwal?.master_kelas?.nama_kelas || 'Kelas';
+    const namaUjian = selectedJadwal?.nama_ujian || 'Ujian';
 
-    // Header Laporan
     doc.setFontSize(16);
     doc.text(`Laporan Hasil Ujian - ${namaUjian}`, 14, 15);
     
@@ -91,7 +123,6 @@ export default function GuruHasilUjian() {
     doc.text(`KKM            : ${kkm}`, 14, 33);
     doc.text(`Total Peserta  : ${hasilList.length} Siswa`, 14, 38);
 
-    // Persiapan Data Tabel
     const tableColumn = ["No", "No. Peserta", "Nama Siswa", "Nilai PG", "Nilai Essay", "Nilai Total", "Keterangan"];
     const tableRows = [];
 
@@ -109,7 +140,6 @@ export default function GuruHasilUjian() {
       tableRows.push(rowData);
     });
 
-    // Render Tabel
     doc.autoTable({
       head: [tableColumn],
       body: tableRows,
@@ -126,12 +156,11 @@ export default function GuruHasilUjian() {
         6: { halign: 'center', fontStyle: 'bold' }
       },
       didParseCell: function(data) {
-        // Beri warna merah untuk yang remidi di kolom keterangan
         if (data.section === 'body' && data.column.index === 6) {
           if (data.cell.raw === 'REMIDI') {
-            data.cell.styles.textColor = [220, 38, 38]; // red-600
+            data.cell.styles.textColor = [220, 38, 38];
           } else {
-            data.cell.styles.textColor = [5, 150, 105]; // emerald-600
+            data.cell.styles.textColor = [5, 150, 105];
           }
         }
       }
@@ -144,53 +173,80 @@ export default function GuruHasilUjian() {
   return (
     <div className="min-h-full bg-[#f8fafc] animate-in fade-in duration-500">
       <div className="p-6 md:p-8">
-
-        {/* Header */}
-        <div className="bg-white border border-slate-200 rounded-2xl px-6 py-5 flex items-center justify-between shadow-sm mb-6">
-          <div className="flex items-center gap-4">
-            <Link to="/guru/jadwal" className="p-2 hover:bg-slate-100 rounded-full transition-all text-slate-500">
-              <ArrowLeft className="w-5 h-5" />
-            </Link>
-            <div>
-              <h1 className="text-[18px] font-bold text-slate-800 leading-none">
-                Hasil: {jadwal?.nama_ujian || '...'}
-              </h1>
-              <p className="text-[13px] text-slate-400 mt-0.5">
-                {jadwal?.bank_soal?.master_mapel?.nama_mapel} · Kelas {jadwal?.master_kelas?.nama_kelas} · KKM: {kkm}
-              </p>
-            </div>
+        
+        {/* Header Section */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-[28px] font-bold text-slate-800 tracking-tight leading-none mb-2">
+              Rekap Ujian {selectedJadwal?.master_kelas ? `- Kelas ${selectedJadwal.master_kelas.nama_kelas}` : ''}
+            </h1>
+            <p className="text-[15px] font-medium text-slate-500">
+              Lihat dan unduh rekapitulasi nilai akhir siswa
+            </p>
           </div>
-          <button 
-            onClick={exportToPDF}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-[13px] font-bold shadow-md transition-all active:scale-95"
-          >
-            <Download className="w-4 h-4" />
-            Cetak PDF
-          </button>
+          
+          <div className="flex items-center gap-3">
+            <div className="w-full md:w-80">
+              <div className="relative">
+                <select 
+                  value={selectedJadwalId}
+                  onChange={(e) => setSelectedJadwalId(e.target.value)}
+                  disabled={loadingJadwal || jadwalList.length === 0}
+                  className="w-full pl-4 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-bold text-slate-700 appearance-none shadow-sm disabled:opacity-50"
+                >
+                  {loadingJadwal ? (
+                    <option value="">Memuat daftar ujian...</option>
+                  ) : jadwalList.length === 0 ? (
+                    <option value="">Belum ada jadwal ujian</option>
+                  ) : (
+                    jadwalList.map(j => (
+                      <option key={j.id} value={j.id}>
+                        {j.nama_ujian} ({j.master_kelas?.nama_kelas})
+                      </option>
+                    ))
+                  )}
+                </select>
+                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              </div>
+            </div>
+
+            <button 
+              onClick={exportToPDF}
+              disabled={hasilList.length === 0}
+              className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-xl text-[14px] font-bold transition-all shadow-sm active:scale-95 whitespace-nowrap"
+            >
+              <Download className="w-4 h-4" />
+              Cetak PDF
+            </button>
+          </div>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          {[
-            { label: 'Peserta', value: hasilList.length, color: 'text-slate-700', bg: 'bg-white', border: 'border-slate-200' },
-            { label: 'Lulus', value: lulusCount, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200' },
-            { label: 'Rata-rata Nilai', value: avgNilai, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200' },
-          ].map(stat => (
-            <div key={stat.label} className={clsx("rounded-2xl border p-5", stat.bg, stat.border)}>
-              <p className={clsx("text-[32px] font-black leading-none", stat.color)}>{stat.value}</p>
-              <p className="text-[13px] text-slate-500 font-semibold mt-2">{stat.label}</p>
-            </div>
-          ))}
-        </div>
+        {selectedJadwalId && (
+          <div className="grid grid-cols-3 gap-4 mb-6">
+            {[
+              { label: 'Peserta', value: hasilList.length, color: 'text-slate-700', bg: 'bg-white', border: 'border-slate-200' },
+              { label: 'Lulus', value: lulusCount, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200' },
+              { label: 'Rata-rata Nilai', value: avgNilai, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200' },
+            ].map(stat => (
+              <div key={stat.label} className={clsx("rounded-2xl border p-5", stat.bg, stat.border)}>
+                <p className={clsx("text-[32px] font-black leading-none", stat.color)}>{stat.value}</p>
+                <p className="text-[13px] text-slate-500 font-semibold mt-2">{stat.label}</p>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Tabel Hasil */}
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
             <h2 className="text-[15px] font-bold text-slate-800">Rekap Nilai Siswa</h2>
-            <div className="flex items-center gap-2 text-[12px] font-semibold text-slate-500">
-              <Award className="w-4 h-4" />
-              KKM: {kkm}
-            </div>
+            {selectedJadwal && (
+              <div className="flex items-center gap-2 text-[12px] font-semibold text-slate-500">
+                <Award className="w-4 h-4" />
+                KKM: {kkm}
+              </div>
+            )}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
@@ -206,7 +262,9 @@ export default function GuruHasilUjian() {
                 </tr>
               </thead>
               <tbody>
-                {loading ? (
+                {!selectedJadwalId ? (
+                  <tr><td colSpan="7" className="px-6 py-12 text-center text-slate-400">Silakan pilih jadwal ujian terlebih dahulu.</td></tr>
+                ) : loadingData ? (
                   <tr><td colSpan="7" className="px-6 py-12 text-center text-slate-500">Memuat hasil nilai...</td></tr>
                 ) : hasilList.length === 0 ? (
                   <tr><td colSpan="7" className="px-6 py-12 text-center text-slate-400">

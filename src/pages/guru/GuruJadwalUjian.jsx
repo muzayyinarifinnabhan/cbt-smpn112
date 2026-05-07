@@ -7,6 +7,7 @@ import { Link } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { generateRotatingToken } from '../../utils/tokenUtils';
 import { Key } from 'lucide-react';
+import { useConfirmStore } from '../../store/useConfirmStore';
 
 const STATUS_CONFIG = {
   menunggu: { label: 'Menunggu', class: 'bg-amber-100 text-amber-700' },
@@ -16,6 +17,7 @@ const STATUS_CONFIG = {
 
 export default function GuruJadwalUjian() {
   const { profile } = useAuthStore();
+  const { showConfirm } = useConfirmStore();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState([]);
   const [search, setSearch] = useState('');
@@ -132,7 +134,15 @@ export default function GuruJadwalUjian() {
     e.preventDefault();
     setSaving(true);
     try {
-      const payload = { ...formData, guru_id: profile.id };
+      // Ensure we extract the date part for the 'tanggal' column
+      const tanggal = formData.waktu_mulai ? formData.waktu_mulai.split('T')[0] : null;
+      
+      const payload = { 
+        ...formData, 
+        guru_id: profile.id,
+        tanggal: tanggal 
+      };
+
       if (isEdit) {
         const { error } = await supabase.from('jadwal_ujian').update(payload).eq('id', selectedId);
         if (error) throw error;
@@ -154,30 +164,46 @@ export default function GuruJadwalUjian() {
   const handleToggleStatus = async (item) => {
     const newStatus = item.status_ujian === 'aktif' ? 'selesai' : 
                       item.status_ujian === 'menunggu' ? 'aktif' : 'selesai';
-    const confirmMsg = newStatus === 'aktif' 
-      ? `Aktifkan ujian "${item.nama_ujian}"? Siswa akan bisa mulai mengerjakan.`
-      : `Tutup ujian "${item.nama_ujian}"? Siswa tidak bisa lagi mengerjakan.`;
-    if (!window.confirm(confirmMsg)) return;
-    try {
-      const { error } = await supabase.from('jadwal_ujian').update({ status_ujian: newStatus }).eq('id', item.id);
-      if (error) throw error;
-      toast.success(newStatus === 'aktif' ? '✅ Ujian diaktifkan! Siswa sudah bisa mengerjakan.' : '🔒 Ujian ditutup.');
-      fetchData();
-    } catch (err) {
-      toast.error('Gagal mengubah status: ' + err.message);
-    }
+    
+    showConfirm({
+      title: newStatus === 'aktif' ? 'Aktifkan Ujian?' : 'Tutup Ujian?',
+      message: newStatus === 'aktif' 
+        ? `Aktifkan ujian "${item.nama_ujian}"? Siswa akan bisa mulai mengerjakan.`
+        : `Tutup ujian "${item.nama_ujian}"? Siswa tidak bisa lagi mengerjakan.`,
+      confirmText: newStatus === 'aktif' ? 'Ya, Aktifkan' : 'Ya, Tutup',
+      cancelText: 'Batal',
+      type: newStatus === 'aktif' ? 'info' : 'warning',
+      onConfirm: async () => {
+        try {
+          const { error } = await supabase.from('jadwal_ujian').update({ status_ujian: newStatus }).eq('id', item.id);
+          if (error) throw error;
+          toast.success(newStatus === 'aktif' ? '✅ Ujian diaktifkan! Siswa sudah bisa mengerjakan.' : '🔒 Ujian ditutup.');
+          fetchData();
+        } catch (err) {
+          toast.error('Gagal mengubah status: ' + err.message);
+        }
+      }
+    });
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Yakin ingin menghapus jadwal ini?')) return;
-    try {
-      const { error } = await supabase.from('jadwal_ujian').delete().eq('id', id);
-      if (error) throw error;
-      toast.success('Jadwal dihapus.');
-      fetchData();
-    } catch (err) {
-      toast.error('Gagal menghapus: ' + err.message);
-    }
+    showConfirm({
+      title: 'Hapus Jadwal Ujian',
+      message: 'Yakin ingin menghapus jadwal ini? Tindakan ini tidak dapat dibatalkan.',
+      confirmText: 'Ya, Hapus',
+      cancelText: 'Batal',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          const { error } = await supabase.from('jadwal_ujian').delete().eq('id', id);
+          if (error) throw error;
+          toast.success('Jadwal dihapus.');
+          fetchData();
+        } catch (err) {
+          toast.error('Gagal menghapus: ' + err.message);
+        }
+      }
+    });
   };
 
   const filtered = data.filter(d =>
@@ -236,7 +262,16 @@ export default function GuruJadwalUjian() {
                   const statusCfg = STATUS_CONFIG[item.status_ujian] || STATUS_CONFIG.menunggu;
                   return (
                     <tr key={item.id} className="hover:bg-slate-50 border-b border-slate-50 transition-colors">
-                      <td className="px-6 py-4 font-bold text-slate-800 text-[14px]">{item.nama_ujian}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-800 text-[14px]">{item.nama_ujian}</span>
+                          {item.jenis_ujian_id && (
+                            <span className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-blue-100 text-blue-700 rounded-full whitespace-nowrap">
+                              Ujian Resmi
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-6 py-4 text-[13px] text-slate-600">
                         <div className="font-semibold">{item.bank_soal?.master_mapel?.nama_mapel || '-'}</div>
                         <div className="text-slate-400 text-[11px]">{item.bank_soal?.kode_bank_soal}</div>
@@ -269,6 +304,15 @@ export default function GuruJadwalUjian() {
                               {item.status_ujian === 'aktif' ? <Square className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
                             </button>
                           )}
+                          {/* Input Soal Shortcut */}
+                          {item.bank_soal_id && (
+                            <Link to={`/guru/soal/input/${item.bank_soal_id}`}
+                              className="p-2 border border-slate-200 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                              title="Input Soal"
+                            >
+                              <BookOpen className="w-4 h-4" />
+                            </Link>
+                          )}
                           {/* Monitor */}
                           <Link to={`/guru/jadwal/monitor/${item.id}`}
                             className="p-2 border border-slate-200 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -283,8 +327,8 @@ export default function GuruJadwalUjian() {
                           >
                             <ChevronRight className="w-4 h-4" />
                           </Link>
-                          {/* Hapus */}
-                          {item.status_ujian === 'menunggu' && (
+                          {/* Hapus (Hanya untuk Ulangan Harian) */}
+                          {!item.jenis_ujian_id && item.status_ujian !== 'aktif' && (
                             <button onClick={() => handleDelete(item.id)}
                               className="p-2 border border-slate-200 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                               title="Hapus"

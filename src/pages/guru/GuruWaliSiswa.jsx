@@ -68,30 +68,30 @@ export default function GuruWaliSiswa() {
       // 1. Get all students in that class
       const { data: peserta, error: pError } = await supabase
         .from('peserta_ujian')
-        .select('siswa_id, nomor_peserta, profiles(nama_lengkap)')
+        .select('id, nomor_peserta, profiles(nama_lengkap)')
         .eq('kelas_id', jadwal.kelas_id);
         
       if (pError) throw pError;
 
-      // 2. Get hasil_nilai for this jadwal to determine status
-      const { data: hasil, error: hError } = await supabase
-        .from('hasil_nilai')
-        .select('siswa_id, waktu_mulai, waktu_selesai')
+      // 2. Get active sessions for this jadwal to determine status
+      const { data: activeSessions, error: hError } = await supabase
+        .from('ujian_aktif')
+        .select('siswa_id, status')
         .eq('jadwal_ujian_id', jadwalId);
 
       if (hError) throw hError;
 
       // Combine
       const combined = (peserta || []).map(p => {
-        const h = hasil?.find(x => x.siswa_id === p.siswa_id);
+        const session = activeSessions?.find(x => x.siswa_id === p.id);
         let status = 'Belum Mulai';
-        if (h) {
-          if (h.waktu_selesai) status = 'Selesai';
-          else status = 'Sedang Mengerjakan';
+        if (session) {
+          if (session.status === 'selesai') status = 'Selesai';
+          else if (session.status === 'sedang_ujian') status = 'Sedang Mengerjakan';
         }
 
         return {
-          id: p.siswa_id,
+          id: p.id,
           nomor_peserta: p.nomor_peserta,
           nama: p.profiles?.nama_lengkap || 'Unknown',
           status: status

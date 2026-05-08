@@ -6,6 +6,7 @@ import {
   Trash2, Filter, Clock
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useConfirmStore } from '../../store/useConfirmStore';
 
 export default function AdminResetUjian() {
   const [loading, setLoading] = useState(true);
@@ -49,11 +50,18 @@ export default function AdminResetUjian() {
     }
   };
 
+  const { showConfirm } = useConfirmStore();
+
   const handleForceSave = async (session) => {
-    if (!confirm(`Selesaikan dan simpan hasil ujian '${session.profiles.nama_lengkap}'? Sistem akan menghitung skor berdasarkan jawaban yang tersimpan.`)) return;
-    
-    setUpdating(session.id);
-    try {
+    showConfirm({
+      title: 'Simpan Hasil Ujian?',
+      message: `Selesaikan dan simpan hasil ujian '${session.profiles.nama_lengkap}'? Sistem akan menghitung skor berdasarkan jawaban yang tersimpan.`,
+      confirmText: 'Ya, Selesaikan',
+      cancelText: 'Batal',
+      type: 'warning',
+      onConfirm: async () => {
+        setUpdating(session.id);
+        try {
       // 1. Ambil Kunci Jawaban
       const { data: soalList } = await supabase
         .from('soal')
@@ -113,31 +121,38 @@ export default function AdminResetUjian() {
     } finally {
       setUpdating(null);
     }
-  };
+  }
+});
+};
 
-  const handleReset = async (sessionId) => {
-    setUpdating(sessionId);
-    try {
-      const { error } = await supabase
-        .from('ujian_aktif')
-        .update({ 
-          is_blocked: false,
-          status: 'sedang_ujian' // Kembalikan ke sedang ujian jika sebelumnya terblokir
-        })
-        .eq('id', sessionId);
+const handleReset = async (sessionId) => {
+setUpdating(sessionId);
+try {
+  const { error } = await supabase
+    .from('ujian_aktif')
+    .update({ 
+      is_blocked: false,
+      status: 'sedang_ujian' // Kembalikan ke sedang ujian jika sebelumnya terblokir
+    })
+    .eq('id', sessionId);
 
-      if (error) throw error;
-      toast.success('Login siswa berhasil di-reset');
-    } catch (error) {
-      toast.error('Gagal mereset login');
-    } finally {
-      setUpdating(null);
-    }
-  };
+  if (error) throw error;
+  toast.success('Login siswa berhasil di-reset');
+} catch (error) {
+  toast.error('Gagal mereset login');
+} finally {
+  setUpdating(null);
+}
+};
 
-  const handleDelete = async (sessionId) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus sesi ujian ini? Siswa harus memasukkan token ulang jika ingin masuk.')) return;
-    
+const handleDelete = async (sessionId) => {
+showConfirm({
+  title: 'Hapus Sesi Ujian?',
+  message: 'Apakah Anda yakin ingin menghapus sesi ujian ini? Siswa harus memasukkan token ulang jika ingin masuk.',
+  confirmText: 'Ya, Hapus',
+  cancelText: 'Batal',
+  type: 'danger',
+  onConfirm: async () => {
     setUpdating(sessionId);
     try {
       const { error } = await supabase
@@ -153,7 +168,9 @@ export default function AdminResetUjian() {
     } finally {
       setUpdating(null);
     }
-  };
+  }
+});
+};
 
   const filteredData = data.filter(item => 
     item.profiles?.nama_lengkap?.toLowerCase().includes(searchTerm.toLowerCase()) ||

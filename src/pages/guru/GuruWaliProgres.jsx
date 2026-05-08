@@ -73,20 +73,20 @@ export default function GuruWaliProgres() {
         
       if (cError) throw cError;
 
-      // 2. Get hasil_nilai to calculate progress
-      const { data: hasil, error: hError } = await supabase
-        .from('hasil_nilai')
-        .select('waktu_mulai, waktu_selesai')
+      // 2. Get ujian_aktif to calculate progress
+      const { data: activeSessions, error: hError } = await supabase
+        .from('ujian_aktif')
+        .select('status')
         .eq('jadwal_ujian_id', jadwalId);
-
+        
       if (hError) throw hError;
 
       let selesai = 0;
       let mengerjakan = 0;
 
-      (hasil || []).forEach(h => {
-        if (h.waktu_selesai) selesai++;
-        else mengerjakan++;
+      (activeSessions || []).forEach(h => {
+        if (h.status === 'selesai') selesai++;
+        else if (h.status === 'sedang_ujian') mengerjakan++;
       });
 
       const belum = (totalSiswa || 0) - selesai - mengerjakan;

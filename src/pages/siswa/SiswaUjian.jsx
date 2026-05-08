@@ -25,6 +25,7 @@ export default function SiswaUjian() {
   const [session, setSession] = useState(null);
   const [timeLeft, setTimeLeft] = useState(0); // in seconds
   const [isFinished, setIsFinished] = useState(false);
+  const [finalResults, setFinalResults] = useState(null);
 
   // Ambil data ujian
   useEffect(() => {
@@ -279,12 +280,13 @@ export default function SiswaUjian() {
       .eq('id', session.id);
   };
 
+
   const handleSubmitUjian = async () => {
     showConfirm({
       title: 'Selesaikan Ujian?',
-      message: 'Apakah Anda yakin ingin menyelesaikan ujian? Jawaban tidak dapat diubah setelah ini.',
+      message: 'Apakah Anda yakin ingin mengakhiri ujian ini? Anda tidak dapat kembali setelah mengirimkan jawaban.',
       confirmText: 'Ya, Selesai',
-      cancelText: 'Belum, Lanjut',
+      cancelText: 'Batal',
       type: 'warning',
       onConfirm: async () => {
         setIsLoading(true);
@@ -307,7 +309,7 @@ export default function SiswaUjian() {
           let kosong = 0;
 
           soalList?.forEach(soal => {
-            const jawabanSiswa = studentAnswers[soal.id];
+            const jawabanSiswa = studentAnswers[soal.id]?.jawaban;
             if (!jawabanSiswa) {
               kosong++;
             } else if (jawabanSiswa === soal.kunci_jawaban) {
@@ -317,35 +319,30 @@ export default function SiswaUjian() {
             }
           });
 
-          // Rumus Nilai - Jika pg_bobot 0, gunakan skala 100
           const bobot = bankSoal?.pg_bobot || (100 / (soalList?.length || 1));
           const nilaiTotal = benar * bobot;
+
+          const resData = {
+            jadwal_ujian_id: session.jadwal_ujian_id,
+            siswa_id: profile.id,
+            pg_benar: benar,
+            pg_salah: salah,
+            pg_kosong: kosong,
+            nilai_pg: nilaiTotal,
+            nilai_total: nilaiTotal
+          };
+
+          setFinalResults(resData);
 
           // 2. Simpan ke hasil_nilai
           const { error: saveErr } = await supabase
             .from('hasil_nilai')
-            .upsert([{
-              jadwal_ujian_id: session.jadwal_ujian_id,
-              siswa_id: profile.id,
-              pg_benar: benar,
-              pg_salah: salah,
-              pg_kosong: kosong,
-              nilai_pg: nilaiTotal,
-              nilai_total: nilaiTotal
-            }]);
+            .upsert([resData]);
           
           if (saveErr) {
             console.error("Save Error:", saveErr);
             // Coba insert jika upsert gagal
-            await supabase.from('hasil_nilai').insert([{
-              jadwal_ujian_id: session.jadwal_ujian_id,
-              siswa_id: profile.id,
-              pg_benar: benar,
-              pg_salah: salah,
-              pg_kosong: kosong,
-              nilai_pg: nilaiTotal,
-              nilai_total: nilaiTotal
-            }]);
+            await supabase.from('hasil_nilai').insert([resData]);
           }
 
           // 3. Update Status Sesi
@@ -387,10 +384,31 @@ export default function SiswaUjian() {
                 <span className="text-slate-400 font-bold uppercase tracking-wider text-xs">Mata Pelajaran</span>
                 <span className="text-slate-800 font-black">{examData?.bank_soal?.master_mapel?.nama_mapel}</span>
               </div>
-              <div className="flex items-center justify-between">
+               <div className="flex items-center justify-between">
                 <span className="text-slate-400 font-bold uppercase tracking-wider text-xs">Status</span>
                 <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-[10px] font-black uppercase">Berhasil Terkirim</span>
               </div>
+              {examData?.hasil_tampil && (
+                <div className="mt-4 pt-4 border-t border-slate-200">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] mb-2 text-center">SKOR AKHIR ANDA</div>
+                  <div className="text-6xl font-black text-indigo-600 mb-6 text-center">{finalResults?.nilai_total || 0}</div>
+                  
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="bg-emerald-50 p-3 rounded-2xl border border-emerald-100 flex flex-col items-center">
+                      <span className="text-emerald-700 font-black text-lg leading-none">{finalResults?.pg_benar || 0}</span>
+                      <span className="text-[8px] text-emerald-500 font-bold uppercase mt-1">Benar</span>
+                    </div>
+                    <div className="bg-red-50 p-3 rounded-2xl border border-red-100 flex flex-col items-center">
+                      <span className="text-red-600 font-black text-lg leading-none">{finalResults?.pg_salah || 0}</span>
+                      <span className="text-[8px] text-red-400 font-bold uppercase mt-1">Salah</span>
+                    </div>
+                    <div className="bg-slate-100 p-3 rounded-2xl border border-slate-200 flex flex-col items-center">
+                      <span className="text-slate-600 font-black text-lg leading-none">{finalResults?.pg_kosong || 0}</span>
+                      <span className="text-[8px] text-slate-400 font-bold uppercase mt-1">Kosong</span>
+                    </div>
+                  </div>
+                </div>
+              )}
            </div>
         </div>
 

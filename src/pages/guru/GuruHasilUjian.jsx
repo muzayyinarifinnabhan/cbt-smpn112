@@ -15,6 +15,22 @@ export default function GuruHasilUjian() {
 
   useEffect(() => {
     fetchData();
+
+    // Subscribe to real-time changes on hasil_nilai for this specific exam
+    const channel = supabase.channel(`guru-hasil-realtime-${id}`)
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'hasil_nilai',
+        filter: `jadwal_ujian_id=eq.${id}` 
+      }, () => {
+        fetchData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [id]);
 
   const fetchData = async () => {

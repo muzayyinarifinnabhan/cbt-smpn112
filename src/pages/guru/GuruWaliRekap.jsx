@@ -75,12 +75,12 @@ export default function GuruWaliRekap() {
       let finalHasil = hasil || [];
       const { data: pesertaList } = await supabase
         .from('peserta_ujian')
-        .select('siswa_id, nomor_peserta')
+        .select('id, nomor_peserta')
         .eq('kelas_id', jadwal.kelas_id);
         
       if (pesertaList) {
         finalHasil = finalHasil.map(h => {
-          const p = pesertaList.find(pes => pes.siswa_id === h.siswa_id);
+          const p = pesertaList.find(pes => pes.id === h.siswa_id);
           return {
             ...h,
             peserta_ujian: { nomor_peserta: p?.nomor_peserta || '-' }

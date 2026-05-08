@@ -14,6 +14,17 @@ export default function AdminTotalUjian() {
 
   useEffect(() => {
     fetchData();
+
+    // Realtime for history
+    const channel = supabase.channel('history-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'hasil_nilai' }, () => {
+        fetchData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const fetchData = async () => {

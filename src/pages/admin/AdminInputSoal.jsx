@@ -39,7 +39,40 @@ export default function AdminInputSoal() {
   useEffect(() => {
     fetchBankSoal();
     fetchSoal();
-  }, [id]);
+    
+    // Restore dari Auto-Save jika ada
+    const saved = localStorage.getItem(`autosave_soal_${id}`);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setFormData(prev => ({ ...prev, ...parsed }));
+        setShowForm(true);
+        toast.info('Draft soal terakhir dipulihkan');
+      } catch (e) {}
+    }
+
+    // Prevent Unload if form is active
+    const handleBeforeUnload = (e) => {
+      if (showForm) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [id, showForm]);
+
+  // Simpan Auto-Save setiap kali formData berubah
+  useEffect(() => {
+    if (showForm) {
+      const { gambar, ...saveData } = formData; // Jangan simpan File object
+      localStorage.setItem(`autosave_soal_${id}`, JSON.stringify(saveData));
+    }
+  }, [formData, showForm, id]);
+
+  const clearAutoSave = () => {
+    localStorage.removeItem(`autosave_soal_${id}`);
+  };
 
   const fetchBankSoal = async () => {
     const { data: res } = await supabase
@@ -126,6 +159,7 @@ export default function AdminInputSoal() {
 
       setShowForm(false);
       resetForm();
+      clearAutoSave(); // Bersihkan draft jika sudah berhasil simpan
       fetchSoal();
     } catch (error) {
       toast.error(error.message);

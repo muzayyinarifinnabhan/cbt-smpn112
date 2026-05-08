@@ -22,6 +22,22 @@ export default function AdminHasilNilai() {
   useEffect(() => {
     if (selectedJadwal) {
       fetchData();
+
+      // Realtime subscription for results
+      const channel = supabase.channel(`hasil-realtime-${selectedJadwal}`)
+        .on('postgres_changes', { 
+          event: '*', 
+          schema: 'public', 
+          table: 'hasil_nilai',
+          filter: `jadwal_ujian_id=eq.${selectedJadwal}` 
+        }, () => {
+          fetchData();
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }
   }, [selectedJadwal]);
 

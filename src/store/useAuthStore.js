@@ -10,6 +10,7 @@ export const useAuthStore = create(
       session: null,
       loading: true,
       isHydrated: false,
+      isLoggingOut: false,
       lastInteraction: Date.now(),
       
       // Set Auth Data
@@ -17,14 +18,15 @@ export const useAuthStore = create(
         session, 
         user: session?.user || (profile ? { id: profile.id } : null), 
         profile, 
-        loading: false 
+        loading: false,
+        isLoggingOut: false
       }),
       setLoading: (loading) => set({ loading }),
       setHydrated: () => set({ isHydrated: true }),
       
       // Custom Logout
       signOut: async () => {
-        set({ loading: true });
+        set({ loading: true, isLoggingOut: true });
         await supabase.auth.signOut();
         set({ session: null, user: null, profile: null, loading: false });
         localStorage.removeItem('auth-storage'); // Clear persistence

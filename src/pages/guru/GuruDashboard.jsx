@@ -12,7 +12,23 @@ export default function GuruDashboard() {
   const [ujianAktifList, setUjianAktifList] = useState([]);
 
   useEffect(() => {
-    if (profile?.id) fetchStats();
+    if (profile?.id) {
+      fetchStats();
+
+      // Realtime subscription for guru dashboard
+      const channel = supabase.channel(`guru-dashboard-${profile.id}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'ujian_aktif' }, () => {
+          fetchStats();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'hasil_nilai' }, () => {
+          fetchStats();
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
   }, [profile]);
 
   const fetchStats = async () => {

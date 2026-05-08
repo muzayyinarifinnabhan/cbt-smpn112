@@ -76,11 +76,12 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 
 // Komponen pembungkus untuk menangani loading dan redirect
 const AuthGuard = ({ children }) => {
-  const { user, isHydrated, loading } = useAuthStore();
+  const { user, isHydrated, loading, isLoggingOut } = useAuthStore();
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Hanya lakukan redirect jika sudah ter-hidrasi, tidak sedang memuat, dan benar-benar tidak ada user
+    // Hanya lakukan redirect jika sudah ter-hidrasi, tidak sedang memuat, 
+    // dan benar-benar tidak ada user DAN sedang proses logout
     if (isHydrated && !loading && !user) {
       navigate('/login', { replace: true });
     }
@@ -141,19 +142,18 @@ export default function App() {
 
   const handleSession = async (session, event = null) => {
     const store = useAuthStore.getState();
-    
-    // Tunggu sampai store ter-hidrasi dari localStorage sebelum memutuskan untuk clear
     if (!store.isHydrated) return;
 
-    // Jika event adalah SIGNED_OUT, tapi kita punya profile dan TIDAK punya session Supabase (Custom Login),
-    // maka abaikan event logout tersebut karena itu mungkin trigger otomatis dari Supabase client.
-    if (event === 'SIGNED_OUT' && store.profile && !store.session) {
-      console.log('Ignored auto-sign-out for custom login');
+    // JANGAN PERNAH logout otomatis jika kita sudah punya profile,
+    // kecuali jika ini adalah event 'SIGNED_OUT' yang dipicu secara eksplisit oleh user (signOut).
+    // Supabase sering memicu 'SIGNED_OUT' saat tab kehilangan fokus atau refresh token gagal sementara.
+    if (event === 'SIGNED_OUT' && store.profile) {
+      console.log('Prevented auto-logout on tab switch/refresh');
       return;
     }
 
     if (session?.user) {
-      // Refresh profile data jika ada session Supabase
+      // Hanya update jika session atau profile berbeda
       const { data: profile } = await supabase
         .from('profiles')
         .select('*')
@@ -163,17 +163,11 @@ export default function App() {
       if (profile) {
         setAuth(session, profile);
       }
-    } else {
-      // Jika session Supabase null, cek apakah kita punya profile di local storage (custom login)
-      const currentProfile = store.profile;
-      if (currentProfile) {
-        // Tetap pertahankan login manual
-        setAuth(null, currentProfile);
-      } else {
-        // Benar-benar tidak ada session & profile, baru clear
-        setAuth(null, null);
-      }
+    } else if (!store.profile) {
+      // Hanya set null jika benar-benar tidak ada profile (belum login)
+      setAuth(null, null);
     }
+    
     setLoading(false);
   };
 

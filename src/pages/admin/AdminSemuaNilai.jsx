@@ -13,6 +13,16 @@ export default function AdminSemuaNilai() {
 
   useEffect(() => {
     fetchData();
+
+    const channel = supabase.channel('semua-nilai-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'hasil_nilai' }, () => {
+        fetchData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const fetchData = async () => {

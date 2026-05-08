@@ -31,7 +31,7 @@ export default function AdminBankSoal() {
     pg_jumlah: 0,
     pg_bobot: 0,
     pg_tampil: 0,
-    opsi_jawaban_jumlah: 5,
+    opsi_jawaban: 5,
     essay_jumlah: 0,
     essay_bobot: 0,
     essay_tampil: 0,
@@ -107,7 +107,7 @@ export default function AdminBankSoal() {
       pg_jumlah: 0,
       pg_bobot: 0,
       pg_tampil: 0,
-      opsi_jawaban_jumlah: 5,
+      opsi_jawaban: 5,
       essay_jumlah: 0,
       essay_bobot: 0,
       essay_tampil: 0,
@@ -387,8 +387,8 @@ export default function AdminBankSoal() {
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-bold text-slate-500 uppercase">Opsi Jawaban</label>
                     <select
-                      value={formData.opsi_jawaban_jumlah}
-                      onChange={(e) => setFormData({...formData, opsi_jawaban_jumlah: parseInt(e.target.value)})}
+                      value={formData.opsi_jawaban}
+                      onChange={(e) => setFormData({...formData, opsi_jawaban: parseInt(e.target.value)})}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none"
                     >
                       <option value="4">4 Opsi</option>

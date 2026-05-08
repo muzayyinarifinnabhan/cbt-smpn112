@@ -12,7 +12,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [mode, setMode] = useState('siswa'); // 'siswa' atau 'admin'
+  const [mode, setMode] = useState('siswa'); // 'siswa', 'admin', atau 'pengawas'
 
   const { user, profile, setAuth } = useAuthStore();
 
@@ -64,33 +64,52 @@ export default function Login() {
         const cleanUsername = username.trim();
         const cleanPassword = password.trim();
 
-        if (cleanUsername.includes('@')) {
-          // 1. Menggunakan Email (Admin) -> Supabase Auth
-          const { data, error: authError } = await supabase.auth.signInWithPassword({
-            email: cleanUsername,
-            password: cleanPassword,
-          });
+        if (mode === 'admin') {
+          // ADMIN / GURU
+          if (cleanUsername.includes('@')) {
+            // Bisa jadi Admin login pakai email (Supabase Auth)
+            const { data, error: authError } = await supabase.auth.signInWithPassword({
+              email: cleanUsername,
+              password: cleanPassword,
+            });
 
-          if (authError) throw authError;
+            if (!authError && data.session) {
+              let { data: profileData } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', data.user.id)
+                .single();
 
-          let { data: profileData, error: profError } = await supabase
+              if (profileData) {
+                setAuth(data.session, profileData);
+                return;
+              }
+            }
+          }
+          
+          // Jika Supabase Auth gagal atau bukan email, kita cek di profiles secara manual
+          // karena AdminDataAdministrator sekarang menyimpan admin baru di table profiles (dengan email di kolom username)
+          const { data: profileData, error: profError } = await supabase
             .from('profiles')
             .select('*')
-            .eq('id', data.user.id)
-            .single();
+            .or(`username.eq.${cleanUsername}`)
+            .eq('password_plain', cleanPassword)
+            .in('role', ['admin', 'guru'])
+            .maybeSingle();
 
           if (profError || !profileData) {
-            throw new Error('Profil admin tidak ditemukan.');
+            throw new Error('Email/Username atau Password salah');
           }
 
-          setAuth(data.session, profileData);
-        } else {
-          // 2. Menggunakan Username (Guru/Pengawas) -> Custom DB Auth
+          setAuth(null, profileData);
+        } else if (mode === 'pengawas') {
+          // PENGAWAS
           const { data: profileData, error: profError } = await supabase
             .from('profiles')
             .select('*')
             .eq('username', cleanUsername)
             .eq('password_plain', cleanPassword)
+            .eq('role', 'pengawas')
             .maybeSingle();
 
           if (profError || !profileData) {
@@ -134,12 +153,12 @@ export default function Login() {
         <div className="bg-[#f8fafc] px-6 sm:px-8 py-8">
           
           {/* Tab Pemilihan Mode Login */}
-          <div className="flex rounded-xl bg-slate-200/60 p-1 mb-6">
+          <div className="flex rounded-xl bg-slate-200/60 p-1 mb-6 gap-1">
             <button
               onClick={() => { setMode('siswa'); setUsername(''); setPassword(''); setError(''); }}
               className={clsx(
-                "flex-1 flex items-center justify-center gap-2 py-2 text-sm font-semibold rounded-lg transition-all",
-                mode === 'siswa' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                "flex-1 flex items-center justify-center gap-2 py-2 text-[13px] font-semibold rounded-lg transition-all",
+                mode === 'siswa' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700 hover:bg-white/50"
               )}
             >
               <GraduationCap className="w-4 h-4" /> Siswa
@@ -147,11 +166,20 @@ export default function Login() {
             <button
               onClick={() => { setMode('admin'); setUsername(''); setPassword(''); setError(''); }}
               className={clsx(
-                "flex-1 flex items-center justify-center gap-2 py-2 text-sm font-semibold rounded-lg transition-all",
-                mode === 'admin' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                "flex-1 flex items-center justify-center gap-2 py-2 text-[13px] font-semibold rounded-lg transition-all",
+                mode === 'admin' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700 hover:bg-white/50"
               )}
             >
-              <ShieldCheck className="w-4 h-4" /> Admin / Guru
+              <ShieldCheck className="w-4 h-4" /> Admin/Guru
+            </button>
+            <button
+              onClick={() => { setMode('pengawas'); setUsername(''); setPassword(''); setError(''); }}
+              className={clsx(
+                "flex-1 flex items-center justify-center gap-2 py-2 text-[13px] font-semibold rounded-lg transition-all",
+                mode === 'pengawas' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700 hover:bg-white/50"
+              )}
+            >
+              <User className="w-4 h-4" /> Pengawas
             </button>
           </div>
 
@@ -164,7 +192,7 @@ export default function Login() {
             
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-slate-700 ml-1">
-                {mode === 'siswa' ? 'Nomor Peserta' : 'Email (Admin) / Username (Guru)'}
+                {mode === 'siswa' ? 'Nomor Peserta' : mode === 'admin' ? 'Email / Username' : 'Username'}
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -174,7 +202,11 @@ export default function Login() {
                   type="text"
                   required
                   className="block w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors bg-white text-slate-800"
-                  placeholder={mode === 'siswa' ? "Contoh: 2026160426" : "Masukkan email atau username"}
+                  placeholder={
+                    mode === 'siswa' ? "Contoh: 2026160426" : 
+                    mode === 'admin' ? "Masukkan email atau username" : 
+                    "Masukkan username pengawas"
+                  }
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                 />

@@ -88,7 +88,7 @@ export default function GuruJadwalUjian() {
           bank_soal(kode_bank_soal, master_mapel(nama_mapel)),
           master_kelas(nama_kelas)
         `)
-        .eq('guru_id', profile.id)
+        .or(`guru_id.eq.${profile.id},guru_id.is.null`)
         .order('created_at', { ascending: false });
       if (error) throw error;
       setData(res || []);

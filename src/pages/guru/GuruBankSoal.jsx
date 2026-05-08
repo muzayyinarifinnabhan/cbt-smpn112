@@ -75,7 +75,7 @@ export default function GuruBankSoal() {
           master_level(nama_level),
           master_kelas(nama_kelas)
         `)
-        .eq('guru_id', profile.id)
+        .or(`guru_id.eq.${profile.id},guru_id.is.null`)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -154,7 +154,11 @@ export default function GuruBankSoal() {
           toast.success('Bank soal berhasil dihapus');
           fetchBankSoal();
         } catch (error) {
-          toast.error('Gagal menghapus: ' + error.message);
+          if (error.message && error.message.includes('violates foreign key constraint')) {
+            toast.error('Bank soal tidak bisa dihapus karena sudah digunakan dalam Jadwal Ujian. Silakan hapus jadwal ujian terkait terlebih dahulu.');
+          } else {
+            toast.error('Gagal menghapus: ' + error.message);
+          }
         }
       }
     });
@@ -281,20 +285,24 @@ export default function GuruBankSoal() {
                           >
                             <List className="w-4 h-4" />
                           </Link>
-                          <button 
-                            onClick={() => handleOpenEdit(item)} 
-                            className="p-2 border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
-                            title="Edit Bank Soal"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button 
-                            onClick={() => handleDelete(item.id)} 
-                            className="p-2 border border-slate-200 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Hapus Bank Soal"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {item.guru_id && (
+                            <>
+                              <button 
+                                onClick={() => handleOpenEdit(item)} 
+                                className="p-2 border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
+                                title="Edit Bank Soal"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button 
+                                onClick={() => handleDelete(item.id)} 
+                                className="p-2 border border-slate-200 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Hapus Bank Soal"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>

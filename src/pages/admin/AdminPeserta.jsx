@@ -151,7 +151,10 @@ export default function AdminPeserta() {
           .from('foto_peserta')
           .upload(fileName, formData.foto);
 
-        if (uploadError) throw new Error('Gagal mengunggah foto');
+        if (uploadError) {
+          console.error('Upload Error Details:', uploadError);
+          throw new Error(`Gagal mengunggah foto: ${uploadError.message}`);
+        }
         
         const { data: urlData } = supabase.storage.from('foto_peserta').getPublicUrl(fileName);
         fotoUrl = urlData.publicUrl;

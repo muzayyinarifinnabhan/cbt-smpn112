@@ -7,6 +7,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { toast } from 'sonner';
 import { clsx } from 'clsx';
+import { useConfirmStore } from '../../store/useConfirmStore';
 
 export default function AdminDataGuru() {
   const [loading, setLoading] = useState(true);
@@ -16,6 +17,7 @@ export default function AdminDataGuru() {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState(null);
+  const { showConfirm } = useConfirmStore();
 
   const [formData, setFormData] = useState({
     nip: '',
@@ -139,15 +141,23 @@ export default function AdminDataGuru() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Hapus data guru ini?')) return;
-    try {
-      const { error } = await supabase.from('profiles').delete().eq('id', id);
-      if (error) throw error;
-      toast.success('Guru berhasil dihapus');
-      fetchData();
-    } catch (error) {
-      toast.error('Gagal menghapus data');
-    }
+    showConfirm({
+      title: 'Hapus Guru',
+      message: 'Apakah Anda yakin ingin menghapus data guru ini? Tindakan ini tidak dapat dibatalkan.',
+      confirmText: 'Ya, Hapus',
+      cancelText: 'Batal',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          const { error } = await supabase.from('profiles').delete().eq('id', id);
+          if (error) throw error;
+          toast.success('Guru berhasil dihapus');
+          fetchData();
+        } catch (error) {
+          toast.error('Gagal menghapus data');
+        }
+      }
+    });
   };
 
   const filteredData = data.filter(item => 

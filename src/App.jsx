@@ -26,6 +26,7 @@ import AdminResetUjian from './pages/admin/AdminResetUjian';
 import AdminHasilNilai from './pages/admin/AdminHasilNilai';
 import AdminSemuaNilai from './pages/admin/AdminSemuaNilai';
 import AdminDaftarHadir from './pages/admin/AdminDaftarHadir';
+import AdminDataAdministrator from './pages/admin/AdminDataAdministrator';
 import AdminDataGuru from './pages/admin/AdminDataGuru';
 import AdminDataPengawas from './pages/admin/AdminDataPengawas';
 import AdminTotalUjian from './pages/admin/AdminTotalUjian';
@@ -53,9 +54,9 @@ import SiswaDashboard from './pages/siswa/SiswaDashboard';
 import SiswaUjian from './pages/siswa/SiswaUjian';
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
-  const { user, profile, loading } = useAuthStore();
+  const { user, profile, loading, isHydrated } = useAuthStore();
 
-  if (loading) return (
+  if (loading || !isHydrated) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 text-sky-600">
       <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-sky-600 mb-4"></div>
       <h2 className="font-semibold text-lg">Memuat Sistem CBT...</h2>
@@ -73,15 +74,41 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   return children;
 };
 
-const RootHandler = () => {
-  const { user, profile, loading } = useAuthStore();
+// Komponen pembungkus untuk menangani loading dan redirect
+const AuthGuard = ({ children }) => {
+  const { user, isHydrated, loading } = useAuthStore();
+  const navigate = useNavigate();
 
-  if (loading) return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 text-sky-600">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-sky-600 mb-4"></div>
-      <h2 className="font-semibold text-lg">Mengalihkan...</h2>
-    </div>
-  );
+  useEffect(() => {
+    // Hanya lakukan redirect jika sudah ter-hidrasi, tidak sedang memuat, dan benar-benar tidak ada user
+    if (isHydrated && !loading && !user) {
+      navigate('/login', { replace: true });
+    }
+  }, [user, isHydrated, loading, navigate]);
+
+  if (!isHydrated || loading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 text-sky-600">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-sky-600 mb-4"></div>
+        <h2 className="font-semibold text-lg">Memuat Sistem CBT...</h2>
+      </div>
+    );
+  }
+
+  return children;
+};
+
+const RootHandler = () => {
+  const { user, profile, isHydrated, loading } = useAuthStore();
+
+  if (!isHydrated || loading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 text-sky-600">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-sky-600 mb-4"></div>
+        <h2 className="font-semibold text-lg">Mengalihkan...</h2>
+      </div>
+    );
+  }
 
   if (!user) return <Navigate to="/login" replace />;
   if (profile?.role === 'admin') return <Navigate to="/admin" replace />;
@@ -93,21 +120,29 @@ const RootHandler = () => {
 };
 
 export default function App() {
-  const { setAuth, setLoading } = useAuthStore();
+  const { setAuth, setLoading, isHydrated } = useAuthStore();
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    if (!isHydrated) return; // Tunggu sampai data dari localStorage siap
+
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
       handleSession(session);
-    });
+    };
+
+    checkSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       handleSession(session);
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [isHydrated]); // Re-run ketika isHydrated berubah jadi true
 
   const handleSession = async (session) => {
+    // Tunggu sampai store ter-hidrasi dari localStorage sebelum memutuskan untuk clear
+    if (!useAuthStore.getState().isHydrated) return;
+
     if (session?.user) {
       const { data: profile } = await supabase
         .from('profiles')
@@ -117,9 +152,13 @@ export default function App() {
         
       setAuth(session, profile);
     } else {
-      // Jangan clear jika sedang login custom_db (karena tidak pakai Supabase Auth Session)
+      // Jika session Supabase null, cek apakah kita punya profile di local storage (custom login)
       const currentProfile = useAuthStore.getState().profile;
-      if (!currentProfile) {
+      if (currentProfile) {
+        // Re-sync auth data agar 'user' object terisi kembali
+        setAuth(null, currentProfile);
+      } else {
+        // Benar-benar tidak ada session & profile, baru clear
         setAuth(null, null);
       }
       setLoading(false);
@@ -136,11 +175,11 @@ export default function App() {
         <Route path="/" element={<RootHandler />} />
 
         {/* ----------------- ADMIN ----------------- */}
-        <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><DashboardLayout /></ProtectedRoute>}>
+        <Route path="/admin" element={<AuthGuard><ProtectedRoute allowedRoles={['admin']}><DashboardLayout /></ProtectedRoute></AuthGuard>}>
           <Route index element={<AdminDashboard />} />
           
           {/* Manajemen User */}
-          <Route path="user/administrator" element={<AdminGenericPage />} />
+          <Route path="user/administrator" element={<AdminDataAdministrator />} />
           <Route path="user/guru" element={<AdminDataGuru />} />
           <Route path="user/pengawas" element={<AdminDataPengawas />} />
           <Route path="total_ujian" element={<AdminTotalUjian />} />
@@ -171,7 +210,7 @@ export default function App() {
         </Route>
 
         {/* ----------------- GURU ----------------- */}
-        <Route path="/guru" element={<ProtectedRoute allowedRoles={['guru']}><DashboardLayout /></ProtectedRoute>}>
+        <Route path="/guru" element={<AuthGuard><ProtectedRoute allowedRoles={['guru']}><DashboardLayout /></ProtectedRoute></AuthGuard>}>
           <Route index element={<GuruDashboard />} />
           <Route path="profil" element={<GuruProfil />} />
           <Route path="soal" element={<GuruBankSoal />} />
@@ -187,12 +226,12 @@ export default function App() {
         </Route>
         
         {/* ----------------- PENGAWAS ----------------- */}
-        <Route path="/pengawas" element={<ProtectedRoute allowedRoles={['pengawas']}><DashboardLayout /></ProtectedRoute>}>
+        <Route path="/pengawas" element={<AuthGuard><ProtectedRoute allowedRoles={['pengawas']}><DashboardLayout /></ProtectedRoute></AuthGuard>}>
           <Route index element={<PengawasDashboard />} />
         </Route>
 
         {/* ----------------- SISWA ----------------- */}
-        <Route path="/siswa" element={<ProtectedRoute allowedRoles={['siswa']}><SiswaLayout /></ProtectedRoute>}>
+        <Route path="/siswa" element={<AuthGuard><ProtectedRoute allowedRoles={['siswa']}><SiswaLayout /></ProtectedRoute></AuthGuard>}>
           <Route index element={<SiswaDashboard />} />
         </Route>
         

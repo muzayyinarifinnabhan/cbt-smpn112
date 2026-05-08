@@ -24,6 +24,7 @@ export default function SiswaUjian() {
   const [answers, setAnswers] = useState({}); // { soal_id: { jawaban: 'A', ragu: false } }
   const [session, setSession] = useState(null);
   const [timeLeft, setTimeLeft] = useState(0); // in seconds
+  const [isFinished, setIsFinished] = useState(false);
 
   // Ambil data ujian
   useEffect(() => {
@@ -58,9 +59,11 @@ export default function SiswaUjian() {
 
   // Fungsi untuk menangani pelanggaran
   const handleViolation = useCallback(async (message) => {
-    if (!session) return;
+    if (!session || isFinished) return;
 
     // Jika sudah keluar tidak perlu berulang kali
+    if (!isExamStarted) return;
+    
     setIsExamStarted(false);
     setViolationMessage(message);
     setTokenInput(''); 
@@ -152,6 +155,10 @@ export default function SiswaUjian() {
 
   const startExamSequence = async () => {
     try {
+      if (!profile?.id) {
+        throw new Error('Profil siswa tidak ditemukan. Silakan login kembali.');
+      }
+
       // 1. Cek atau Buat Sesi Ujian (ujian_aktif)
       const { data: existingSession, error: sErr } = await supabase
         .from('ujian_aktif')
@@ -336,13 +343,13 @@ export default function SiswaUjian() {
             })
             .eq('id', session.id);
           
+          setIsFinished(true);
+          setIsExamStarted(false);
           if (document.fullscreenElement) {
             await document.exitFullscreen();
           }
-          setIsExamStarted(false);
-          navigate('/siswa');
-          toast.success('Ujian berhasil diselesaikan!');
         } catch (err) {
+          console.error(err);
           toast.error('Gagal mengirimkan ujian. Silakan coba lagi.');
         } finally {
           setIsLoading(false);
@@ -350,6 +357,39 @@ export default function SiswaUjian() {
       }
     });
   };
+
+  if (isFinished) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-700">
+        <div className="w-24 h-24 bg-emerald-100 rounded-full flex items-center justify-center mb-8 animate-bounce">
+          <CheckCircle2 className="w-12 h-12 text-emerald-600" />
+        </div>
+        <h1 className="text-4xl font-black text-slate-900 mb-2">Ujian Selesai!</h1>
+        <p className="text-slate-500 font-bold text-lg mb-10 max-w-md">Terima kasih, jawaban Anda telah berhasil terkirim ke server kami.</p>
+        
+        <div className="bg-slate-50 rounded-[2.5rem] p-10 w-full max-w-sm border border-slate-100 mb-10">
+           <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400 font-bold uppercase tracking-wider text-xs">Mata Pelajaran</span>
+                <span className="text-slate-800 font-black">{examData?.bank_soal?.master_mapel?.nama_mapel}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400 font-bold uppercase tracking-wider text-xs">Status</span>
+                <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-[10px] font-black uppercase">Berhasil Terkirim</span>
+              </div>
+           </div>
+        </div>
+
+        <button 
+          onClick={() => navigate('/siswa')}
+          className="px-12 py-5 bg-indigo-600 text-white font-black rounded-[2rem] hover:bg-indigo-700 shadow-2xl shadow-indigo-200 transition-all active:scale-95 flex items-center gap-3"
+        >
+          KEMBALI KE DASHBOARD
+          <ChevronRight className="w-5 h-5" />
+        </button>
+      </div>
+    );
+  }
 
   const formatTime = (seconds) => {
     const h = Math.floor(seconds / 3600);

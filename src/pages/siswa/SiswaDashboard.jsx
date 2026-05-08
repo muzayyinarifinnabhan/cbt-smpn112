@@ -65,10 +65,24 @@ export default function SiswaDashboard() {
           .eq('status_ujian', 'aktif')
           .order('waktu_mulai', { ascending: true });
 
-        // 4. Gabungkan dan tandai sumbernya
+        // 4. Ambil hasil nilai siswa untuk semua ujian yang diikuti
+        const { data: results } = await supabase
+          .from('hasil_nilai')
+          .select('*')
+          .eq('siswa_id', profile.id);
+
+        // 5. Gabungkan dan tandai sumbernya
         const combined = [
-          ...(adminExams || []).map(e => ({ ...e, sumber: 'admin' })),
-          ...(guruExams || []).map(e => ({ ...e, sumber: 'guru' })),
+          ...(adminExams || []).map(e => ({ 
+            ...e, 
+            sumber: 'admin', 
+            hasil: (results || []).find(r => r.jadwal_ujian_id === e.id) 
+          })),
+          ...(guruExams || []).map(e => ({ 
+            ...e, 
+            sumber: 'guru', 
+            hasil: (results || []).find(r => r.jadwal_ujian_id === e.id) 
+          })),
         ];
         setExams(combined);
       } catch (error) {
@@ -133,9 +147,15 @@ export default function SiswaDashboard() {
                   }`}>
                     {isGuru ? '📝 Ulangan Harian' : '🏫 Ujian Resmi'}
                   </span>
-                  <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-green-100 text-green-700 border border-green-200">
-                    Sedang Berlangsung
-                  </span>
+                  {exam.hasil ? (
+                    <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-slate-100 text-slate-500 border border-slate-200">
+                      Selesai
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-green-100 text-green-700 border border-green-200">
+                      Sedang Berlangsung
+                    </span>
+                  )}
                   {isGuru && (
                     <span className="px-2 py-0.5 text-[10px] font-black rounded-full bg-amber-100 text-amber-700 border border-amber-200 flex items-center gap-1 uppercase tracking-tighter">
                       <KeyRound className="w-3 h-3" /> Token Diperlukan
@@ -157,19 +177,34 @@ export default function SiswaDashboard() {
                 </div>
               </div>
 
-              <div className="pl-3 md:pl-0 mt-2 md:mt-0">
-                <button 
-                  onClick={() => navigate(`/siswa/ujian/${exam.id}`)}
-                  className={`w-full md:w-auto flex items-center justify-center gap-2 text-white py-2.5 px-6 rounded-xl text-sm font-semibold transition-all shadow-md active:scale-95 ${
-                    isGuru
-                      ? 'bg-emerald-600 hover:bg-emerald-700 hover:shadow-emerald-600/20'
-                      : 'bg-blue-600 hover:bg-blue-700 hover:shadow-blue-600/20'
-                  }`}
-                >
-                  <PlayCircle className="w-4 h-4" />
-                  Mulai Ujian
-                  <ChevronRight className="w-4 h-4 ml-1" />
-                </button>
+              <div className="pl-3 md:pl-0 mt-2 md:mt-0 flex flex-col items-end gap-2">
+                {exam.hasil ? (
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="px-4 py-1.5 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-black uppercase border border-emerald-100 flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4" />
+                      Sudah Dikerjakan
+                    </span>
+                    {exam.hasil_tampil && (
+                      <div className="flex flex-col items-end mr-1">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">Skor Anda</span>
+                        <span className="text-2xl font-black text-indigo-600 leading-none">{exam.hasil.nilai_total}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <button 
+                    onClick={() => navigate(`/siswa/ujian/${exam.id}`)}
+                    className={`w-full md:w-auto flex items-center justify-center gap-2 text-white py-2.5 px-6 rounded-xl text-sm font-semibold transition-all shadow-md active:scale-95 ${
+                      isGuru
+                        ? 'bg-emerald-600 hover:bg-emerald-700 hover:shadow-emerald-600/20'
+                        : 'bg-blue-600 hover:bg-blue-700 hover:shadow-blue-600/20'
+                    }`}
+                  >
+                    <PlayCircle className="w-4 h-4" />
+                    Mulai Ujian
+                    <ChevronRight className="w-4 h-4 ml-1" />
+                  </button>
+                )}
               </div>
               
             </div>

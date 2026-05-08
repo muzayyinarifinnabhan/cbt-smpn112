@@ -23,6 +23,7 @@ export default function AdminDashboard() {
     
     // Status Spesifik
     const { count: countUjianAktif } = await supabase.from('jadwal_ujian').select('*', { count: 'exact', head: true }).eq('status_ujian', 'aktif');
+    
     const { count: countSiswaSedang } = await supabase.from('ujian_aktif').select('*', { count: 'exact', head: true }).eq('status', 'sedang_ujian');
     const { count: countSiswaSelesai } = await supabase.from('ujian_aktif').select('*', { count: 'exact', head: true }).eq('status', 'selesai');
 

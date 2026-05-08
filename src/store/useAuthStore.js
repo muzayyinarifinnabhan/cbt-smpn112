@@ -10,6 +10,7 @@ export const useAuthStore = create(
       session: null,
       loading: true,
       isHydrated: false,
+      lastInteraction: Date.now(),
       
       // Set Auth Data
       setAuth: (session, profile) => set({ 

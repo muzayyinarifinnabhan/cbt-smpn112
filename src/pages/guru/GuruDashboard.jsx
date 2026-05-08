@@ -24,14 +24,29 @@ export default function GuruDashboard() {
         .select('id', { count: 'exact', head: true })
         .eq('guru_id', profile.id);
 
-      // 2. Jadwal ujian aktif milik guru ini
+      // 2. Jadwal ujian aktif milik guru ini + progress siswa
       const { data: aktifData } = await supabase
         .from('jadwal_ujian')
-        .select('id, nama_ujian, durasi_menit, master_kelas(nama_kelas), bank_soal(master_mapel(nama_mapel))')
+        .select(`
+          id, 
+          nama_ujian, 
+          durasi_menit, 
+          master_kelas(id, nama_kelas), 
+          bank_soal(master_mapel(nama_mapel)),
+          ujian_aktif(status)
+        `)
         .eq('guru_id', profile.id)
         .eq('status_ujian', 'aktif');
 
-      setUjianAktifList(aktifData || []);
+      // Proses progress siswa untuk setiap ujian
+      const processedAktif = (aktifData || []).map(exam => {
+        const statuses = exam.ujian_aktif || [];
+        const sedang = statuses.filter(s => s.status === 'sedang_ujian').length;
+        const selesai = statuses.filter(s => s.status === 'selesai').length;
+        return { ...exam, sedang, selesai };
+      });
+
+      setUjianAktifList(processedAktif);
 
       // 3. Hitung total peserta & rata-rata nilai dari semua jadwal guru ini
       const { data: allJadwal } = await supabase
@@ -129,17 +144,27 @@ export default function GuruDashboard() {
         ) : (
           <div className="divide-y divide-slate-50">
             {ujianAktifList.map(item => (
-              <div key={item.id} className="flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition-colors">
+              <div key={item.id} className="flex flex-col md:flex-row md:items-center justify-between px-6 py-5 hover:bg-slate-50 transition-colors gap-4">
                 <div>
-                  <p className="font-bold text-[14px] text-slate-800">{item.nama_ujian}</p>
-                  <p className="text-[12px] text-slate-500 mt-0.5">
+                  <p className="font-bold text-[15px] text-slate-800">{item.nama_ujian}</p>
+                  <p className="text-[12px] text-slate-500 mt-1">
                     {item.bank_soal?.master_mapel?.nama_mapel} · Kelas {item.master_kelas?.nama_kelas} · {item.durasi_menit} menit
                   </p>
+                  <div className="flex items-center gap-4 mt-3">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
+                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-tight">Sedang: <span className="text-blue-600">{item.sedang}</span></span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-tight">Selesai: <span className="text-emerald-600">{item.selesai}</span></span>
+                    </div>
+                  </div>
                 </div>
                 <Link to={`/guru/jadwal/monitor/${item.id}`}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-[12px] font-bold hover:bg-emerald-100 transition-colors"
+                  className="flex items-center justify-center gap-1.5 px-5 py-2.5 bg-blue-600 text-white rounded-xl text-[12px] font-bold hover:bg-blue-700 transition-all shadow-md active:scale-95"
                 >
-                  <Eye className="w-3.5 h-3.5" /> Monitor
+                  <Eye className="w-3.5 h-3.5" /> Monitor Live
                 </Link>
               </div>
             ))}

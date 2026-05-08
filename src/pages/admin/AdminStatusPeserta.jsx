@@ -38,16 +38,21 @@ export default function AdminStatusPeserta() {
 
   const fetchData = async () => {
     try {
-      // 1. Ambil semua peserta
-      const { data: peserta, error: pErr } = await supabase
-        .from('peserta_ujian')
+      // 1. Ambil semua profiles dengan role siswa
+      const { data: students, error: pErr } = await supabase
+        .from('profiles')
         .select(`
           id,
-          nomor_peserta,
-          profiles (nama_lengkap, last_seen),
-          master_kelas (nama_kelas),
+          nama_lengkap,
+          username,
+          last_seen,
+          peserta_ujian (
+            nomor_peserta,
+            master_kelas (nama_kelas)
+          ),
           ujian_aktif (status)
-        `);
+        `)
+        .eq('role', 'siswa');
 
       if (pErr) throw pErr;
 
@@ -55,24 +60,24 @@ export default function AdminStatusPeserta() {
       const now = new Date();
       let total = 0, online = 0, mengerjakan = 0, selesai = 0;
 
-      const processedData = (peserta || []).map(item => {
+      const processedData = (students || []).map(item => {
         total++;
         
         // Cek online (aktif dalam 5 menit terakhir)
-        const lastSeen = item.profiles?.last_seen ? new Date(item.profiles.last_seen) : null;
+        const lastSeen = item.last_seen ? new Date(item.last_seen) : null;
         const isOnline = lastSeen && (now - lastSeen) < 300000; // 5 menit = 300.000 ms
-
-        // Cek status ujian
-        // Karena ujian_aktif adalah array (hasMany) di Supabase join, ambil yang terbaru/pertama
-        const ujianStatus = item.ujian_aktif?.[0]?.status || 'offline';
-
+ 
+        // Cek status ujian (Ambil status terbaru dari ujian aktif manapun)
+        const activeUjian = (item.ujian_aktif || [])[0];
+        const ujianStatus = activeUjian?.status || 'offline';
+ 
         if (isOnline) online++;
         if (ujianStatus === 'sedang_ujian') mengerjakan++;
         if (ujianStatus === 'selesai') selesai++;
-
+ 
         let statusText = 'offline';
         let statusColor = 'bg-slate-100 text-slate-500';
-
+ 
         if (ujianStatus === 'sedang_ujian') {
           statusText = 'mengerjakan';
           statusColor = 'bg-yellow-100 text-yellow-600 border border-yellow-200';
@@ -83,12 +88,14 @@ export default function AdminStatusPeserta() {
           statusText = 'online';
           statusColor = 'bg-blue-100 text-blue-600 border border-blue-200';
         }
+ 
+        const pDetail = (item.peserta_ujian || [])[0];
 
         return {
           id: item.id,
-          no_peserta: item.nomor_peserta,
-          nama: item.profiles?.nama_lengkap,
-          kelas: item.master_kelas?.nama_kelas || '-',
+          no_peserta: pDetail?.nomor_peserta || item.username,
+          nama: item.nama_lengkap,
+          kelas: pDetail?.master_kelas?.nama_kelas || '-',
           status: statusText,
           statusColor: statusColor
         };

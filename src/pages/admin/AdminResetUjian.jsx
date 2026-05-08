@@ -49,6 +49,72 @@ export default function AdminResetUjian() {
     }
   };
 
+  const handleForceSave = async (session) => {
+    if (!confirm(`Selesaikan dan simpan hasil ujian '${session.profiles.nama_lengkap}'? Sistem akan menghitung skor berdasarkan jawaban yang tersimpan.`)) return;
+    
+    setUpdating(session.id);
+    try {
+      // 1. Ambil Kunci Jawaban
+      const { data: soalList } = await supabase
+        .from('soal')
+        .select('id, kunci_jawaban')
+        .eq('bank_soal_id', session.jadwal_ujian?.bank_soal_id);
+      
+      const { data: bankSoal } = await supabase
+        .from('bank_soal')
+        .select('pg_bobot')
+        .eq('id', session.jadwal_ujian?.bank_soal_id)
+        .single();
+
+      const studentAnswers = session.jawaban_pg || {};
+      let benar = 0;
+      let salah = 0;
+      let kosong = 0;
+
+      soalList?.forEach(soal => {
+        const jawabanSiswa = studentAnswers[soal.id]?.jawaban;
+        if (!jawabanSiswa) {
+          kosong++;
+        } else if (jawabanSiswa === soal.kunci_jawaban) {
+          benar++;
+        } else {
+          salah++;
+        }
+      });
+
+      const bobot = bankSoal?.pg_bobot || (100 / (soalList?.length || 1));
+      const nilaiTotal = benar * bobot;
+
+      // 2. Simpan ke hasil_nilai
+      const { error: hErr } = await supabase
+        .from('hasil_nilai')
+        .upsert([{
+          jadwal_ujian_id: session.jadwal_ujian_id,
+          siswa_id: session.siswa_id,
+          pg_benar: benar,
+          pg_salah: salah,
+          pg_kosong: kosong,
+          nilai_pg: nilaiTotal,
+          nilai_total: nilaiTotal
+        }]);
+
+      if (hErr) throw hErr;
+
+      // 3. Update Status Sesi
+      await supabase
+        .from('ujian_aktif')
+        .update({ status: 'selesai' })
+        .eq('id', session.id);
+
+      toast.success('Hasil ujian berhasil disimpan paksa');
+      fetchData();
+    } catch (error) {
+      toast.error('Gagal simpan paksa: ' + error.message);
+    } finally {
+      setUpdating(null);
+    }
+  };
+
   const handleReset = async (sessionId) => {
     setUpdating(sessionId);
     try {
@@ -64,6 +130,26 @@ export default function AdminResetUjian() {
       toast.success('Login siswa berhasil di-reset');
     } catch (error) {
       toast.error('Gagal mereset login');
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  const handleDelete = async (sessionId) => {
+    if (!confirm('Apakah Anda yakin ingin menghapus sesi ujian ini? Siswa harus memasukkan token ulang jika ingin masuk.')) return;
+    
+    setUpdating(sessionId);
+    try {
+      const { error } = await supabase
+        .from('ujian_aktif')
+        .delete()
+        .eq('id', sessionId);
+
+      if (error) throw error;
+      toast.success('Sesi ujian berhasil dihapus');
+      fetchData(); // Refresh list
+    } catch (error) {
+      toast.error('Gagal menghapus sesi');
     } finally {
       setUpdating(null);
     }
@@ -182,20 +268,43 @@ export default function AdminResetUjian() {
                          )}
                       </div>
                     </td>
-                    <td className="px-8 py-6 text-right">
-                       <button 
-                         onClick={() => handleReset(item.id)}
-                         disabled={!item.is_blocked || updating === item.id || item.peringatan_nyontek >= 3}
-                         className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl text-[12px] font-black transition-all active:scale-95 shadow-sm group ${
-                           item.is_blocked && item.peringatan_nyontek < 3
-                           ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-100' 
-                           : 'bg-slate-100 text-slate-300 pointer-events-none'
-                         }`}
-                       >
-                         <RefreshCcw className={`w-3.5 h-3.5 ${updating === item.id ? 'animate-spin' : ''}`} />
-                         {item.peringatan_nyontek >= 3 ? 'LIMIT BLOKIR' : 'RESET LOGIN'}
-                       </button>
-                    </td>
+                     <td className="px-8 py-6 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {item.status === 'selesai' && (
+                            <button 
+                              onClick={() => handleForceSave(item)}
+                              disabled={updating === item.id}
+                              className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-2xl text-[12px] font-black hover:bg-emerald-700 transition-all shadow-sm active:scale-95"
+                              title="Simpan Hasil Ke Rekap Nilai"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              SIMPAN HASIL
+                            </button>
+                          )}
+
+                          <button 
+                            onClick={() => handleReset(item.id)}
+                            disabled={!item.is_blocked || updating === item.id || item.peringatan_nyontek >= 3}
+                            className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl text-[12px] font-black transition-all active:scale-95 shadow-sm group ${
+                              item.is_blocked && item.peringatan_nyontek < 3
+                              ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-100' 
+                              : 'bg-slate-100 text-slate-300 pointer-events-none'
+                            }`}
+                          >
+                            <RefreshCcw className={`w-3.5 h-3.5 ${updating === item.id ? 'animate-spin' : ''}`} />
+                            {item.peringatan_nyontek >= 3 ? 'LIMIT BLOKIR' : 'RESET LOGIN'}
+                          </button>
+                          
+                          <button 
+                            onClick={() => handleDelete(item.id)}
+                            disabled={updating === item.id}
+                            className="p-2.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-all shadow-sm active:scale-95"
+                            title="Hapus Sesi"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                     </td>
                   </tr>
                 ))
               )}

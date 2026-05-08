@@ -322,7 +322,7 @@ export default function SiswaUjian() {
           const nilaiTotal = benar * bobot;
 
           // 2. Simpan ke hasil_nilai
-          await supabase
+          const { error: saveErr } = await supabase
             .from('hasil_nilai')
             .upsert([{
               jadwal_ujian_id: session.jadwal_ujian_id,
@@ -332,7 +332,21 @@ export default function SiswaUjian() {
               pg_kosong: kosong,
               nilai_pg: nilaiTotal,
               nilai_total: nilaiTotal
-            }], { onConflict: 'jadwal_ujian_id, siswa_id' });
+            }]);
+          
+          if (saveErr) {
+            console.error("Save Error:", saveErr);
+            // Coba insert jika upsert gagal
+            await supabase.from('hasil_nilai').insert([{
+              jadwal_ujian_id: session.jadwal_ujian_id,
+              siswa_id: profile.id,
+              pg_benar: benar,
+              pg_salah: salah,
+              pg_kosong: kosong,
+              nilai_pg: nilaiTotal,
+              nilai_total: nilaiTotal
+            }]);
+          }
 
           // 3. Update Status Sesi
           await supabase

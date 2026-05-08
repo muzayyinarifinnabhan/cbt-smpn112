@@ -132,37 +132,49 @@ export default function App() {
 
     checkSession();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      handleSession(session);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      handleSession(session, event);
     });
 
     return () => subscription.unsubscribe();
   }, [isHydrated]); // Re-run ketika isHydrated berubah jadi true
 
-  const handleSession = async (session) => {
+  const handleSession = async (session, event = null) => {
+    const store = useAuthStore.getState();
+    
     // Tunggu sampai store ter-hidrasi dari localStorage sebelum memutuskan untuk clear
-    if (!useAuthStore.getState().isHydrated) return;
+    if (!store.isHydrated) return;
+
+    // Jika event adalah SIGNED_OUT, tapi kita punya profile dan TIDAK punya session Supabase (Custom Login),
+    // maka abaikan event logout tersebut karena itu mungkin trigger otomatis dari Supabase client.
+    if (event === 'SIGNED_OUT' && store.profile && !store.session) {
+      console.log('Ignored auto-sign-out for custom login');
+      return;
+    }
 
     if (session?.user) {
+      // Refresh profile data jika ada session Supabase
       const { data: profile } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', session.user.id)
         .single();
         
-      setAuth(session, profile);
+      if (profile) {
+        setAuth(session, profile);
+      }
     } else {
       // Jika session Supabase null, cek apakah kita punya profile di local storage (custom login)
-      const currentProfile = useAuthStore.getState().profile;
+      const currentProfile = store.profile;
       if (currentProfile) {
-        // Re-sync auth data agar 'user' object terisi kembali
+        // Tetap pertahankan login manual
         setAuth(null, currentProfile);
       } else {
         // Benar-benar tidak ada session & profile, baru clear
         setAuth(null, null);
       }
-      setLoading(false);
     }
+    setLoading(false);
   };
 
   return (

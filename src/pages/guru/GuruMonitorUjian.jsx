@@ -54,7 +54,7 @@ export default function GuruMonitorUjian() {
     try {
       const { data: siswaList } = await supabase
         .from('peserta_ujian')
-        .select('id, nomor_peserta, profiles(nama_lengkap)')
+        .select('siswa_id, nomor_peserta, profiles(nama_lengkap)')
         .eq('kelas_id', kelasId);
 
       const { data: aktifList } = await supabase
@@ -94,7 +94,7 @@ export default function GuruMonitorUjian() {
   }, [id]);
 
   const mergedData = pesertaKelas.map(siswa => {
-    const progress = ujianAktifList.find(u => u.siswa_id === siswa.id);
+    const progress = ujianAktifList.find(u => u.siswa_id === siswa.siswa_id);
     const pgCount = progress?.jawaban_pg ? Object.keys(progress.jawaban_pg).length : 0;
     const essayCount = progress?.jawaban_essay ? Object.keys(progress.jawaban_essay).length : 0;
     return { ...siswa, status: progress?.status || 'belum_mulai', pgCount, essayCount };
@@ -232,10 +232,10 @@ export default function GuruMonitorUjian() {
                   <tr><td colSpan="5" className="px-6 py-12 text-center text-slate-500">Memuat data peserta...</td></tr>
                 ) : mergedData.length === 0 ? (
                   <tr><td colSpan="5" className="px-6 py-12 text-center text-slate-400">Tidak ada peserta di kelas ini.</td></tr>
-                ) : mergedData.map(siswa => {
+                ) : mergedData.map((siswa, idx) => {
                   const cfg = SISWA_STATUS[siswa.status] || SISWA_STATUS.belum_mulai;
                   return (
-                    <tr key={siswa.id} className="hover:bg-slate-50 border-b border-slate-50 transition-colors">
+                    <tr key={siswa.siswa_id || idx} className="hover:bg-slate-50 border-b border-slate-50 transition-colors">
                       <td className="px-6 py-4 text-[13px] font-mono font-bold text-slate-600">{siswa.nomor_peserta}</td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2.5">

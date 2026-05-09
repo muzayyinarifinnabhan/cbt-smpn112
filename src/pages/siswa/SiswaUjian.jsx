@@ -300,19 +300,27 @@ export default function SiswaUjian() {
       onConfirm: async () => {
         setIsLoading(true);
         try {
-          // 1. Ambil Kunci Jawaban
-          const { data: soalList } = await supabase
+          // 1. Ambil Kunci Jawaban dengan ID yang benar (dari examData)
+          const bankSoalId = examData?.bank_soal_id || examData?.bank_soal?.id;
+          
+          if (!bankSoalId) {
+            throw new Error('Data Bank Soal tidak ditemukan. Gagal memproses nilai.');
+          }
+
+          const { data: soalList, error: qErr } = await supabase
             .from('soal')
             .select('id, kunci_jawaban')
-            .eq('bank_soal_id', session.jadwal_ujian?.bank_soal_id);
+            .eq('bank_soal_id', bankSoalId);
           
+          if (qErr) throw qErr;
+
           const { data: bankSoal } = await supabase
             .from('bank_soal')
             .select('pg_bobot')
-            .eq('id', session.jadwal_ujian?.bank_soal_id)
+            .eq('id', bankSoalId)
             .single();
 
-          const studentAnswers = session.jawaban_pg || {};
+          const studentAnswers = answers || {};
           let benar = 0;
           let salah = 0;
           let kosong = 0;
@@ -321,14 +329,16 @@ export default function SiswaUjian() {
             const jawabanSiswa = studentAnswers[soal.id]?.jawaban;
             if (!jawabanSiswa) {
               kosong++;
-            } else if (jawabanSiswa === soal.kunci_jawaban) {
+            } else if (jawabanSiswa.toString().toLowerCase() === soal.kunci_jawaban.toString().toLowerCase()) {
               benar++;
             } else {
               salah++;
             }
           });
 
-          const bobot = bankSoal?.pg_bobot || (100 / (soalList?.length || 1));
+          // Perbaikan bobot: pastikan jika pg_bobot 0 atau null, gunakan auto-calculate
+          const dbBobot = Number(bankSoal?.pg_bobot);
+          const bobot = (dbBobot > 0) ? dbBobot : (100 / (soalList?.length || 1));
           const nilaiTotal = benar * bobot;
 
           const resData = {

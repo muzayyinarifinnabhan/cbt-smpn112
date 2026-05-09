@@ -42,6 +42,7 @@ import GuruJadwalUjian from './pages/guru/GuruJadwalUjian';
 import GuruMonitorUjian from './pages/guru/GuruMonitorUjian';
 import GuruHasilUjian from './pages/guru/GuruHasilUjian';
 import GuruDaftarNilai from './pages/guru/GuruDaftarNilai';
+import GuruResetUjian from './pages/guru/GuruResetUjian';
 import GuruWaliSiswa from './pages/guru/GuruWaliSiswa';
 import GuruWaliProgres from './pages/guru/GuruWaliProgres';
 import GuruWaliRekap from './pages/guru/GuruWaliRekap';
@@ -225,6 +226,7 @@ export default function App() {
           <Route path="jadwal" element={<GuruJadwalUjian />} />
           <Route path="jadwal/monitor/:id" element={<GuruMonitorUjian />} />
           <Route path="jadwal/hasil/:id" element={<GuruHasilUjian />} />
+          <Route path="ujian/reset" element={<GuruResetUjian />} />
           <Route path="nilai" element={<GuruDaftarNilai />} />
           <Route path="wali/siswa" element={<GuruWaliSiswa />} />
           <Route path="wali/progres" element={<GuruWaliProgres />} />

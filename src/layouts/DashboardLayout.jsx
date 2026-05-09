@@ -136,6 +136,7 @@ export default function DashboardLayout() {
         { name: 'Bank Soal', href: '/guru/soal', icon: ClipboardList },
         { name: 'Peserta Ujian', href: '/guru/peserta', icon: Users },
         { name: 'Jadwal Ujian', href: '/guru/jadwal', icon: Calendar },
+        { name: 'Reset Ujian', href: '/guru/ujian/reset', icon: Clock },
         { name: 'Hasil Nilai', href: '/guru/nilai', icon: Award },
         { 
           name: 'Walikelas', 

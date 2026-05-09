@@ -41,7 +41,8 @@ export default function AdminJadwalUjian() {
     hasil_tampil: false,
     reset_login: true,
     ulang_kkm: false,
-    opsi_jawaban: 4
+    opsi_jawaban: 4,
+    kkm: 70
   });
 
   useEffect(() => {
@@ -111,6 +112,7 @@ export default function AdminJadwalUjian() {
 
         if (existingBs) {
           finalBankSoalId = existingBs.id;
+          await supabase.from('bank_soal').update({ kkm: formData.kkm }).eq('id', finalBankSoalId);
         } else {
           // Auto-create Bank Soal jika belum ada
           const bsPayload = {
@@ -125,13 +127,19 @@ export default function AdminJadwalUjian() {
             essay_jumlah: 0,
             essay_bobot: 0,
             essay_tampil: 0,
-            kkm: 70,
+            kkm: formData.kkm || 70,
             status: 'aktif',
             tipe: 'non-agama'
           };
           const { data: newBs, error: bsErr } = await supabase.from('bank_soal').insert([bsPayload]).select('id').single();
           if (bsErr) throw new Error('Gagal membuat bank soal otomatis: ' + bsErr.message);
           finalBankSoalId = newBs.id;
+        }
+      } else {
+        // Jika edit, update KKM juga
+        const { data: currentJadwal } = await supabase.from('jadwal_ujian').select('bank_soal_id').eq('id', selectedId).single();
+        if (currentJadwal?.bank_soal_id) {
+          await supabase.from('bank_soal').update({ kkm: formData.kkm }).eq('id', currentJadwal.bank_soal_id);
         }
       }
 
@@ -184,11 +192,12 @@ export default function AdminJadwalUjian() {
       waktu_mulai: item.waktu_mulai ? item.waktu_mulai.substring(0, 16) : '',
       waktu_selesai: item.waktu_selesai ? item.waktu_selesai.substring(0, 16) : '',
       status_ujian: item.status_ujian,
-      acak_soal: item.acak_soal,
-      acak_jawaban: item.acak_jawaban,
-      hasil_tampil: item.hasil_tampil,
+      acak_soal: item.acak_soal ?? true,
+      acak_jawaban: item.acak_jawaban ?? true,
+      hasil_tampil: item.hasil_tampil ?? false,
       reset_login: item.reset_login,
-      ulang_kkm: item.ulang_kkm
+      ulang_kkm: item.ulang_kkm,
+      kkm: item.bank_soal?.kkm || 70
     });
     setShowModal(true);
   };

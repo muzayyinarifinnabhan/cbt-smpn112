@@ -3,17 +3,21 @@ import { supabase } from '../../lib/supabase';
 import { 
   BarChart3, Search, User, CheckCircle2, 
   XCircle, MinusCircle, ArrowDownAZ, 
-  Filter, Download, ChevronDown
+  Filter, Download, ChevronDown, Trash2
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { clsx } from 'clsx';
+import { useConfirmStore } from '../../store/useConfirmStore';
 
 export default function AdminHasilNilai() {
+  const { showConfirm } = useConfirmStore();
   const [loading, setLoading] = useState(true);
   const [jadwalList, setJadwalList] = useState([]);
   const [selectedJadwal, setSelectedJadwal] = useState('');
   const [data, setData] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [stats, setStats] = useState({ avg: 0, high: 0, low: 0 });
+  const [isDeleting, setIsDeleting] = useState(null);
 
   useEffect(() => {
     fetchJadwalList();
@@ -89,6 +93,43 @@ export default function AdminHasilNilai() {
     }
   };
 
+  const handleDelete = async (item) => {
+    showConfirm({
+      title: 'Hapus Hasil Nilai?',
+      message: `Hapus hasil nilai '${item.profiles.nama_lengkap}'? Sesi ujian siswa ini juga akan dihapus agar siswa bisa mengulang jika diperlukan.`,
+      confirmText: 'Ya, Hapus',
+      cancelText: 'Batal',
+      type: 'danger',
+      onConfirm: async () => {
+        setIsDeleting(item.id);
+        try {
+          // 1. Hapus hasil_nilai
+          const { error: err1 } = await supabase
+            .from('hasil_nilai')
+            .delete()
+            .eq('id', item.id);
+          
+          if (err1) throw err1;
+
+          // 2. Hapus ujian_aktif (agar bisa ujian lagi jika admin mau)
+          await supabase
+            .from('ujian_aktif')
+            .delete()
+            .eq('siswa_id', item.siswa_id)
+            .eq('jadwal_ujian_id', item.jadwal_ujian_id);
+
+          toast.success('Hasil nilai berhasil dihapus');
+          fetchData(); // Refresh list
+        } catch (error) {
+          toast.error('Gagal menghapus hasil nilai');
+          console.error(error);
+        } finally {
+          setIsDeleting(null);
+        }
+      }
+    });
+  };
+
   const filteredData = data.filter(item => 
     item.profiles?.nama_lengkap?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.profiles?.username?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -156,7 +197,8 @@ export default function AdminHasilNilai() {
                 <th className="px-4 py-6 text-center">Benar</th>
                 <th className="px-4 py-6 text-center">Salah</th>
                 <th className="px-4 py-6 text-center">Kosong</th>
-                <th className="px-4 py-6 text-right">Nilai</th>
+                <th className="px-4 py-6 text-center">Nilai</th>
+                <th className="px-4 py-6 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -189,10 +231,23 @@ export default function AdminHasilNilai() {
                         {item.pg_kosong}
                       </div>
                     </td>
-                    <td className="px-4 py-6 text-right">
+                    <td className="px-4 py-6 text-center">
                       <span className="inline-block px-4 py-1.5 bg-red-50 text-red-600 font-black rounded-xl text-lg min-w-[60px] text-center shadow-sm">
                         {item.nilai_total}
                       </span>
+                    </td>
+                    <td className="px-4 py-6 text-center">
+                       <button 
+                        onClick={() => handleDelete(item)}
+                        disabled={isDeleting === item.id}
+                        className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all active:scale-90 disabled:opacity-50"
+                      >
+                        {isDeleting === item.id ? (
+                          <div className="w-4 h-4 border-2 border-red-200 border-t-red-500 rounded-full animate-spin" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
+                      </button>
                     </td>
                   </tr>
                 ))

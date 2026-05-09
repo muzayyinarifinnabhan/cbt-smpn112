@@ -2,14 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { 
   Download, Printer, Search, User, 
-  BookOpen, FileText, ChevronRight
+  BookOpen, FileText, ChevronRight, Trash2
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useConfirmStore } from '../../store/useConfirmStore';
 
 export default function AdminSemuaNilai() {
+  const { showConfirm } = useConfirmStore();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isDeleting, setIsDeleting] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -49,6 +52,43 @@ export default function AdminSemuaNilai() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDelete = async (item) => {
+    showConfirm({
+      title: 'Hapus Hasil Nilai?',
+      message: `Hapus hasil nilai '${item.profiles.nama_lengkap}' pada ujian '${item.jadwal_ujian.nama_ujian}'? Sesi aktif siswa ini juga akan dihapus.`,
+      confirmText: 'Ya, Hapus',
+      cancelText: 'Batal',
+      type: 'danger',
+      onConfirm: async () => {
+        setIsDeleting(item.id);
+        try {
+          // 1. Hapus hasil_nilai
+          const { error: err1 } = await supabase
+            .from('hasil_nilai')
+            .delete()
+            .eq('id', item.id);
+          
+          if (err1) throw err1;
+
+          // 2. Hapus ujian_aktif
+          await supabase
+            .from('ujian_aktif')
+            .delete()
+            .eq('siswa_id', item.siswa_id)
+            .eq('jadwal_ujian_id', item.jadwal_ujian_id);
+
+          toast.success('Hasil nilai berhasil dihapus');
+          fetchData(); // Refresh list
+        } catch (error) {
+          toast.error('Gagal menghapus hasil nilai');
+          console.error(error);
+        } finally {
+          setIsDeleting(null);
+        }
+      }
+    });
   };
 
   const handleExportCSV = () => {
@@ -152,6 +192,7 @@ export default function AdminSemuaNilai() {
                 <th className="px-8 py-6 uppercase tracking-tighter">Ujian</th>
                 <th className="px-8 py-6 uppercase tracking-tighter">Mapel</th>
                 <th className="px-8 py-6 text-right">Nilai</th>
+                <th className="px-8 py-6 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -173,7 +214,7 @@ export default function AdminSemuaNilai() {
                       {item.jadwal_ujian?.bank_soal?.master_mapel?.nama_mapel || '-'}
                     </td>
                     <td className="px-8 py-6 text-right">
-                      <div className="flex justify-end">
+                      <div className="flex items-center justify-end gap-4">
                         <span className={`inline-block px-4 py-1.5 font-black rounded-xl text-[15px] min-w-[50px] text-center shadow-sm ${
                           item.nilai_total >= 75 
                           ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' 
@@ -183,6 +224,18 @@ export default function AdminSemuaNilai() {
                         }`}>
                           {item.nilai_total}
                         </span>
+                        
+                        <button 
+                          onClick={() => handleDelete(item)}
+                          disabled={isDeleting === item.id}
+                          className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all active:scale-90 disabled:opacity-50"
+                        >
+                          {isDeleting === item.id ? (
+                            <div className="w-4 h-4 border-2 border-red-200 border-t-red-500 rounded-full animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
+                        </button>
                       </div>
                     </td>
                   </tr>

@@ -5,8 +5,11 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { toast } from 'sonner';
+import { clsx } from 'clsx';
+import { useConfirmStore } from '../../store/useConfirmStore';
 
 export default function AdminTotalUjian() {
+  const { showConfirm } = useConfirmStore();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState([]);
   const [search, setSearch] = useState('');
@@ -56,35 +59,42 @@ export default function AdminTotalUjian() {
   };
 
   const handleDeleteLog = async (item) => {
-    if (!confirm(`Hapus seluruh riwayat ujian '${item.profiles.nama_lengkap}' pada ujian '${item.jadwal_ujian.nama_ujian}'? Data skor di menu Hasil Nilai juga akan hilang.`)) return;
-    
-    setIsDeleting(item.id);
-    try {
-      // 1. Hapus dari hasil_nilai
-      const { error: err1 } = await supabase
-        .from('hasil_nilai')
-        .delete()
-        .eq('id', item.id);
-      
-      if (err1) throw err1;
+    showConfirm({
+      title: 'Hapus Riwayat Ujian?',
+      message: `Hapus seluruh riwayat ujian '${item.profiles.nama_lengkap}' pada ujian '${item.jadwal_ujian.nama_ujian}'? Data skor di menu Hasil Nilai juga akan hilang.`,
+      confirmText: 'Ya, Hapus',
+      cancelText: 'Batal',
+      type: 'danger',
+      onConfirm: async () => {
+        setIsDeleting(item.id);
+        try {
+          // 1. Hapus dari hasil_nilai
+          const { error: err1 } = await supabase
+            .from('hasil_nilai')
+            .delete()
+            .eq('id', item.id);
+          
+          if (err1) throw err1;
 
-      // 2. Hapus dari ujian_aktif (log jawaban dan status)
-      const { error: err2 } = await supabase
-        .from('ujian_aktif')
-        .delete()
-        .eq('siswa_id', item.siswa_id)
-        .eq('jadwal_ujian_id', item.jadwal_ujian_id);
+          // 2. Hapus dari ujian_aktif (log jawaban dan status)
+          const { error: err2 } = await supabase
+            .from('ujian_aktif')
+            .delete()
+            .eq('siswa_id', item.siswa_id)
+            .eq('jadwal_ujian_id', item.jadwal_ujian_id);
 
-      if (err2) throw err2;
+          if (err2) throw err2;
 
-      toast.success('Riwayat ujian berhasil dihapus permanen');
-      fetchData(); // Refresh list
-    } catch (error) {
-      toast.error('Gagal menghapus riwayat');
-      console.error(error);
-    } finally {
-      setIsDeleting(null);
-    }
+          toast.success('Riwayat ujian berhasil dihapus permanen');
+          fetchData(); // Refresh list
+        } catch (error) {
+          toast.error('Gagal menghapus riwayat');
+          console.error(error);
+        } finally {
+          setIsDeleting(null);
+        }
+      }
+    });
   };
 
   const filteredData = data.filter(item => 

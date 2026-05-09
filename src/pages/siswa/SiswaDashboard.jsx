@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../store/useAuthStore';
-import { User, FileText, BookOpen, Clock, CalendarDays, PlayCircle, ChevronRight, Loader2, KeyRound } from 'lucide-react';
+import { User, FileText, BookOpen, Clock, CalendarDays, PlayCircle, ChevronRight, Loader2, KeyRound, CheckCircle, RefreshCcw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { format } from 'date-fns';
@@ -95,6 +95,34 @@ export default function SiswaDashboard() {
     fetchData();
   }, [profile?.id]);
 
+  const handleRemidi = async (exam) => {
+    if (!confirm(`Apakah Anda yakin ingin mengulang ujian '${exam.nama_ujian}'? Nilai sebelumnya akan dihapus permanen.`)) return;
+    
+    setLoading(true);
+    try {
+      // 1. Hapus hasil_nilai
+      await supabase
+        .from('hasil_nilai')
+        .delete()
+        .eq('id', exam.hasil.id);
+      
+      // 2. Hapus ujian_aktif
+      await supabase
+        .from('ujian_aktif')
+        .delete()
+        .eq('siswa_id', profile.id)
+        .eq('jadwal_ujian_id', exam.id);
+      
+      // 3. Refresh data
+      window.location.reload(); 
+    } catch (error) {
+      console.error("Gagal remidi:", error);
+      alert("Gagal mengulang ujian. Silakan hubungi admin.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-[400px] flex flex-col items-center justify-center text-sky-600">
@@ -187,8 +215,24 @@ export default function SiswaDashboard() {
                     {exam.hasil_tampil && (
                       <div className="flex flex-col items-end mr-1">
                         <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">Skor Anda</span>
-                        <span className="text-2xl font-black text-indigo-600 leading-none">{exam.hasil.nilai_total}</span>
+                        <span className={`text-2xl font-black leading-none ${
+                          exam.hasil.nilai_total < (exam.bank_soal?.kkm || 70) 
+                          ? 'text-red-600' 
+                          : 'text-indigo-600'
+                        }`}>
+                          {exam.hasil.nilai_total}
+                        </span>
                       </div>
+                    )}
+                    {/* Tombol Remidi jika Nilai < KKM DAN Fitur Ulang KKM Aktif */}
+                    {exam.ulang_kkm && exam.hasil.nilai_total < (exam.bank_soal?.kkm || 70) && (
+                      <button 
+                        onClick={() => handleRemidi(exam)}
+                        className="mt-2 flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-[11px] font-bold hover:bg-amber-100 transition-all active:scale-95"
+                      >
+                        <RefreshCcw className="w-3.5 h-3.5" />
+                        Ulang Ujian (Remidi)
+                      </button>
                     )}
                   </div>
                 ) : (

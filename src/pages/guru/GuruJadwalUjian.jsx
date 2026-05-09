@@ -47,6 +47,9 @@ export default function GuruJadwalUjian() {
     acak_soal: true,
     acak_jawaban: true,
     hasil_tampil: false,
+    kkm: 70,
+    reset_login: true,
+    ulang_kkm: false,
     status_ujian: 'menunggu',
   });
 
@@ -123,6 +126,9 @@ export default function GuruJadwalUjian() {
       acak_soal: item.acak_soal ?? true,
       acak_jawaban: item.acak_jawaban ?? true,
       hasil_tampil: item.hasil_tampil ?? false,
+      kkm: item.bank_soal?.kkm || 70,
+      reset_login: item.reset_login ?? true,
+      ulang_kkm: item.ulang_kkm ?? false,
       status_ujian: item.status_ujian || 'menunggu',
     });
     setSelectedId(item.id);
@@ -142,6 +148,11 @@ export default function GuruJadwalUjian() {
         guru_id: profile.id,
         tanggal: tanggal 
       };
+      
+      // Update KKM in Bank Soal
+      if (formData.bank_soal_id) {
+        await supabase.from('bank_soal').update({ kkm: formData.kkm }).eq('id', formData.bank_soal_id);
+      }
 
       if (isEdit) {
         const { error } = await supabase.from('jadwal_ujian').update(payload).eq('id', selectedId);
@@ -431,10 +442,21 @@ export default function GuruJadwalUjian() {
                 <div>
                   <p className="text-[14px] font-bold text-slate-800 mb-3">Opsi Ujian</p>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <div className="space-y-1.5 col-span-2 md:col-span-1">
+                      <label className="text-[13px] font-bold text-slate-700 ml-1">KKM Ujian</label>
+                      <input 
+                        type="number" required min="0" max="100"
+                        className="w-full px-4 py-2 border border-slate-200 rounded-lg outline-none focus:border-blue-600 text-[14px]"
+                        value={formData.kkm}
+                        onChange={(e) => setFormData({ ...formData, kkm: e.target.value })}
+                      />
+                    </div>
                     {[
                       { key: 'acak_soal', label: 'Acak Soal' },
                       { key: 'acak_jawaban', label: 'Acak Jawaban' },
-                      { key: 'hasil_tampil', label: 'Tampilkan Hasil ke Siswa' },
+                      { key: 'hasil_tampil', label: 'Tampilkan Hasil' },
+                      { key: 'reset_login', label: 'Reset Login' },
+                      { key: 'ulang_kkm', label: 'Remidi Otomatis' },
                     ].map(opt => (
                       <label key={opt.key} className="flex items-center gap-2.5 cursor-pointer p-3 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
                         <input type="checkbox" className="w-4 h-4 text-blue-600 rounded"

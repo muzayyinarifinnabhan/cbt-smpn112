@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuthStore } from '../../store/useAuthStore';
 import { toast } from 'sonner';
-import { ChevronDown, Download, Award } from 'lucide-react';
+import { ChevronDown, Download, Award, Trash2 } from 'lucide-react';
 import { clsx } from 'clsx';
+import { useConfirmStore } from '../../store/useConfirmStore';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
@@ -15,6 +16,8 @@ export default function GuruWaliRekap() {
   const [selectedJadwalId, setSelectedJadwalId] = useState('');
   
   const [hasilList, setHasilList] = useState([]);
+  const { showConfirm } = useConfirmStore();
+  const [isDeleting, setIsDeleting] = useState(null);
 
   useEffect(() => {
     if (profile?.id) {
@@ -94,6 +97,43 @@ export default function GuruWaliRekap() {
     } finally {
       setLoadingData(false);
     }
+  };
+
+  const handleDelete = async (item) => {
+    showConfirm({
+      title: 'Hapus Hasil Nilai?',
+      message: `Hapus hasil nilai '${item.profiles.nama_lengkap}'? Sesi ujian siswa ini juga akan dihapus agar siswa bisa mengulang jika diperlukan.`,
+      confirmText: 'Ya, Hapus',
+      cancelText: 'Batal',
+      type: 'danger',
+      onConfirm: async () => {
+        setIsDeleting(item.id);
+        try {
+          // 1. Hapus hasil_nilai
+          const { error: err1 } = await supabase
+            .from('hasil_nilai')
+            .delete()
+            .eq('id', item.id);
+          
+          if (err1) throw err1;
+
+          // 2. Hapus ujian_aktif (agar bisa ujian lagi jika mau)
+          await supabase
+            .from('ujian_aktif')
+            .delete()
+            .eq('siswa_id', item.siswa_id)
+            .eq('jadwal_ujian_id', item.jadwal_ujian_id);
+
+          toast.success('Hasil nilai berhasil dihapus');
+          fetchHasil(selectedJadwalId); // Refresh list
+        } catch (error) {
+          toast.error('Gagal menghapus hasil nilai');
+          console.error(error);
+        } finally {
+          setIsDeleting(null);
+        }
+      }
+    });
   };
 
   const selectedJadwal = jadwalList.find(j => j.id === selectedJadwalId);
@@ -259,11 +299,12 @@ export default function GuruWaliRekap() {
                   <th className="px-6 py-4 text-center">Nilai Essay</th>
                   <th className="px-6 py-4 text-center">Nilai Total</th>
                   <th className="px-6 py-4 text-center">Keterangan</th>
+                  <th className="px-6 py-4 text-center">Aksi</th>
                 </tr>
               </thead>
               <tbody>
                 {!selectedJadwalId ? (
-                  <tr><td colSpan="7" className="px-6 py-12 text-center text-slate-400">Silakan pilih jadwal ujian terlebih dahulu.</td></tr>
+                  <tr><td colSpan="8" className="px-6 py-12 text-center text-slate-400">Silakan pilih jadwal ujian terlebih dahulu.</td></tr>
                 ) : loadingData ? (
                   <tr><td colSpan="7" className="px-6 py-12 text-center text-slate-500">Memuat hasil nilai...</td></tr>
                 ) : hasilList.length === 0 ? (
@@ -291,6 +332,19 @@ export default function GuruWaliRekap() {
                           lulus ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700")}>
                           {lulus ? 'LULUS' : 'REMIDI'}
                         </span>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <button 
+                          onClick={() => handleDelete(item)}
+                          disabled={isDeleting === item.id}
+                          className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all active:scale-90 disabled:opacity-50"
+                        >
+                          {isDeleting === item.id ? (
+                            <div className="w-4 h-4 border-2 border-red-200 border-t-red-500 rounded-full animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
+                        </button>
                       </td>
                     </tr>
                   );

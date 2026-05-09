@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Eye, Trash2, X, Play, Square, Calendar, Clock, BookOpen, Users, ChevronRight } from 'lucide-react';
+import { 
+  Plus, Search, Eye, Trash2, X, Play, Square, Calendar, 
+  Clock, BookOpen, Users, ChevronRight, Key, ShieldAlert 
+} from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuthStore } from '../../store/useAuthStore';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { generateRotatingToken } from '../../utils/tokenUtils';
-import { Key } from 'lucide-react';
 import { useConfirmStore } from '../../store/useConfirmStore';
 
 const STATUS_CONFIG = {
@@ -143,8 +145,11 @@ export default function GuruJadwalUjian() {
       // Ensure we extract the date part for the 'tanggal' column
       const tanggal = formData.waktu_mulai ? formData.waktu_mulai.split('T')[0] : null;
       
+      // Destructure kkm so it's not sent to jadwal_ujian table
+      const { kkm, ...restData } = formData;
+      
       const payload = { 
-        ...formData, 
+        ...restData, 
         guru_id: profile.id,
         tanggal: tanggal 
       };
@@ -438,31 +443,44 @@ export default function GuruJadwalUjian() {
                   </div>
                 </div>
 
-                {/* Opsi */}
-                <div>
-                  <p className="text-[14px] font-bold text-slate-800 mb-3">Opsi Ujian</p>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    <div className="space-y-1.5 col-span-2 md:col-span-1">
-                      <label className="text-[13px] font-bold text-slate-700 ml-1">KKM Ujian</label>
-                      <input 
-                        type="number" required min="0" max="100"
-                        className="w-full px-4 py-2 border border-slate-200 rounded-lg outline-none focus:border-blue-600 text-[14px]"
-                        value={formData.kkm}
-                        onChange={(e) => setFormData({ ...formData, kkm: e.target.value })}
-                      />
+                {/* Opsi Ujian Modern Layout */}
+                <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
+                  <p className="text-[14px] font-black text-slate-800 mb-4 uppercase tracking-wider flex items-center gap-2">
+                    <ShieldAlert className="w-4 h-4 text-indigo-600" />
+                    Opsi Keamanan & Hasil
+                  </p>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1.5 col-span-1 md:col-span-2 bg-white p-4 rounded-xl border border-slate-100 shadow-sm mb-2">
+                      <label className="text-[13px] font-bold text-slate-700 block mb-1">KKM (Kriteria Ketuntasan Minimum)</label>
+                      <div className="flex items-center gap-3">
+                        <input 
+                          type="number" required min="0" max="100"
+                          className="w-24 px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-indigo-600 font-bold text-lg text-indigo-600"
+                          value={formData.kkm}
+                          onChange={(e) => setFormData({ ...formData, kkm: e.target.value })}
+                        />
+                        <p className="text-[11px] text-slate-400 font-medium">Siswa dengan nilai di bawah ini akan dianggap 'REMIDI'.</p>
+                      </div>
                     </div>
+
                     {[
-                      { key: 'acak_soal', label: 'Acak Soal' },
-                      { key: 'acak_jawaban', label: 'Acak Jawaban' },
-                      { key: 'hasil_tampil', label: 'Tampilkan Hasil' },
-                      { key: 'reset_login', label: 'Reset Login' },
-                      { key: 'ulang_kkm', label: 'Remidi Otomatis' },
+                      { key: 'acak_soal', label: 'Acak Urutan Soal', desc: 'Soal akan muncul berbeda tiap siswa' },
+                      { key: 'acak_jawaban', label: 'Acak Opsi Jawaban', desc: 'Urutan A,B,C,D akan diacak' },
+                      { key: 'hasil_tampil', label: 'Tampilkan Hasil', desc: 'Siswa bisa melihat skor setelah ujian' },
+                      { key: 'reset_login', label: 'Reset Login', desc: 'Cegah login ganda di perangkat lain' },
+                      { key: 'ulang_kkm', label: 'Remidi Otomatis', desc: 'Izinkan siswa ulang jika di bawah KKM' },
                     ].map(opt => (
-                      <label key={opt.key} className="flex items-center gap-2.5 cursor-pointer p-3 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
-                        <input type="checkbox" className="w-4 h-4 text-blue-600 rounded"
-                          checked={formData[opt.key]}
-                          onChange={e => setFormData({...formData, [opt.key]: e.target.checked})} />
-                        <span className="text-[13px] font-semibold text-slate-700">{opt.label}</span>
+                      <label key={opt.key} className="flex items-start gap-3 cursor-pointer p-3.5 bg-white border border-slate-100 rounded-xl hover:border-indigo-300 hover:shadow-md hover:shadow-indigo-500/5 transition-all group">
+                        <div className="pt-0.5">
+                          <input type="checkbox" className="w-5 h-5 text-indigo-600 rounded-md border-slate-300 focus:ring-indigo-500 transition-all cursor-pointer"
+                            checked={formData[opt.key]}
+                            onChange={e => setFormData({...formData, [opt.key]: e.target.checked})} />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[13px] font-bold text-slate-800 group-hover:text-indigo-700 transition-colors">{opt.label}</span>
+                          <span className="text-[10px] text-slate-400 font-medium leading-tight">{opt.desc}</span>
+                        </div>
                       </label>
                     ))}
                   </div>

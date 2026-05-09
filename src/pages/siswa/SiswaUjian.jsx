@@ -115,14 +115,24 @@ export default function SiswaUjian() {
       handleViolation('Layar ujian kehilangan fokus. Anda terdeteksi melihat aplikasi lain atau layar mengambang.');
     };
 
+    const handleResize = () => {
+      // Deteksi layar belah (split screen) atau resize drastis
+      // Jika lebar layar berubah lebih dari 25% dari lebar layar fisik
+      if (window.innerWidth < screen.width * 0.75) {
+        handleViolation('Sistem mendeteksi penggunaan layar belah (split screen) atau jendela yang terlalu kecil. Mohon gunakan layar penuh.');
+      }
+    };
+
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('resize', handleResize);
 
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('resize', handleResize);
     };
   }, [isExamStarted, handleViolation]);
 

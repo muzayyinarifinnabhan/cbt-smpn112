@@ -61,38 +61,37 @@ export default function SiswaUjian() {
   // Fungsi untuk menangani pelanggaran
   const handleViolation = useCallback(async (message) => {
     if (!session || isFinished) return;
-
-    // Jika sudah keluar tidak perlu berulang kali
     if (!isExamStarted) return;
     
+    // 1. Matikan state ujian segera
     setIsExamStarted(false);
-    setViolationMessage(message);
     setTokenInput(''); 
     
-    // Update DB: is_blocked = true dan increment peringatan_nyontek
+    // 2. Keluar dari fullscreen segera
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
+
+    // 3. Update DB: is_blocked = true dan increment peringatan_nyontek
     try {
-      const { data: updatedSession, error: uErr } = await supabase
+      await supabase
         .from('ujian_aktif')
         .update({ 
           is_blocked: true,
           peringatan_nyontek: (session.peringatan_nyontek || 0) + 1
         })
-        .eq('id', session.id)
-        .select()
-        .single();
+        .eq('id', session.id);
       
-      if (!uErr) {
-        setSession(updatedSession);
-      }
+      // Update session local agar state sinkron
+      setSession(prev => ({ ...prev, is_blocked: true, peringatan_nyontek: (prev.peringatan_nyontek || 0) + 1 }));
     } catch (err) {
       console.error("Gagal update status blokir:", err);
     }
 
-    // Keluar dari mode fullscreen jika masih didalam
-    if (document.fullscreenElement) {
-      document.exitFullscreen().catch((err) => console.error(err));
-    }
-  }, [session]);
+    // 4. Tampilkan pesan dan paksa kembali ke tampilan awal (token)
+    setViolationMessage(message);
+    toast.error(message, { duration: 5000 });
+  }, [session, isExamStarted, isFinished]);
 
   // Violation: kick back to token screen (not permanent block)
 

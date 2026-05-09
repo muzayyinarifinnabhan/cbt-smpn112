@@ -20,6 +20,7 @@ export default function AdminJadwalUjian() {
 
   // Data Referensi
   const [jenisUjian, setJenisUjian] = useState([]);
+  const [bankSoals, setBankSoals] = useState([]);
   const [mapels, setMapels] = useState([]);
   const [kelas, setKelas] = useState([]);
   const [gurus, setGurus] = useState([]);
@@ -35,6 +36,7 @@ export default function AdminJadwalUjian() {
     durasi_menit: 60,
     waktu_mulai: '',
     waktu_selesai: '',
+    bank_soal_id: '',
     status_ujian: 'menunggu',
     acak_soal: false,
     acak_jawaban: false,
@@ -55,10 +57,15 @@ export default function AdminJadwalUjian() {
     const { data: m } = await supabase.from('master_mapel').select('*');
     const { data: k } = await supabase.from('master_kelas').select('*');
     const { data: g } = await supabase.from('profiles').select('id, nama_lengkap').eq('role', 'guru').order('nama_lengkap');
+    const { data: bs } = await supabase
+      .from('bank_soal')
+      .select('*, master_mapel(nama_mapel), master_kelas(nama_kelas)')
+      .eq('status', 'aktif');
     setJenisUjian(j || []);
     setMapels(m || []);
     setKelas(k || []);
     setGurus(g || []);
+    setBankSoals(bs || []);
   };
 
   const fetchData = async () => {
@@ -99,54 +106,11 @@ export default function AdminJadwalUjian() {
     e.preventDefault();
     setSaving(true);
     try {
-      let finalBankSoalId = null;
-
-      if (!isEdit) {
-        // Cek apakah sudah ada bank soal untuk Mapel & Kelas ini
-        const { data: existingBs } = await supabase
-          .from('bank_soal')
-          .select('id')
-          .eq('mapel_id', formData.mapel_id)
-          .eq('kelas_id', formData.kelas_id)
-          .maybeSingle();
-
-        if (existingBs) {
-          finalBankSoalId = existingBs.id;
-          await supabase.from('bank_soal').update({ kkm: formData.kkm }).eq('id', finalBankSoalId);
-        } else {
-          // Auto-create Bank Soal jika belum ada
-          const bsPayload = {
-            kode_bank_soal: `BS-${formData.nama_ujian.replace(/[^a-zA-Z0-9]/g, '').substring(0, 10).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`,
-            guru_id: formData.guru_id || null,
-            mapel_id: formData.mapel_id,
-            kelas_id: formData.kelas_id,
-            pg_jumlah: 0,
-            pg_bobot: 0,
-            pg_tampil: 0,
-            opsi_jawaban: formData.opsi_jawaban,
-            essay_jumlah: 0,
-            essay_bobot: 0,
-            essay_tampil: 0,
-            kkm: formData.kkm || 70,
-            status: 'aktif',
-            tipe: 'non-agama'
-          };
-          const { data: newBs, error: bsErr } = await supabase.from('bank_soal').insert([bsPayload]).select('id').single();
-          if (bsErr) throw new Error('Gagal membuat bank soal otomatis: ' + bsErr.message);
-          finalBankSoalId = newBs.id;
-        }
-      } else {
-        // Jika edit, update KKM juga
-        const { data: currentJadwal } = await supabase.from('jadwal_ujian').select('bank_soal_id').eq('id', selectedId).single();
-        if (currentJadwal?.bank_soal_id) {
-          await supabase.from('bank_soal').update({ kkm: formData.kkm }).eq('id', currentJadwal.bank_soal_id);
-        }
-      }
-
       const payload = {
         nama_ujian: formData.nama_ujian,
         jenis_ujian_id: formData.jenis_ujian_id,
         guru_id: formData.guru_id || null,
+        bank_soal_id: formData.bank_soal_id,
         token: formData.token,
         durasi_menit: formData.durasi_menit,
         waktu_mulai: formData.waktu_mulai,
@@ -164,9 +128,8 @@ export default function AdminJadwalUjian() {
         await supabase.from('jadwal_ujian').update(payload).eq('id', selectedId);
         toast.success('Jadwal ujian diperbarui');
       } else {
-        payload.bank_soal_id = finalBankSoalId;
         await supabase.from('jadwal_ujian').insert([payload]);
-        toast.success('Jadwal ujian berhasil dibuat beserta Bank Soalnya');
+        toast.success('Jadwal ujian berhasil dibuat');
       }
 
       setShowModal(false);
@@ -197,6 +160,7 @@ export default function AdminJadwalUjian() {
       hasil_tampil: item.hasil_tampil ?? false,
       reset_login: item.reset_login,
       ulang_kkm: item.ulang_kkm,
+      bank_soal_id: item.bank_soal_id || '',
       kkm: item.bank_soal?.kkm || 70
     });
     setShowModal(true);
@@ -244,7 +208,9 @@ export default function AdminJadwalUjian() {
               acak_jawaban: false,
               hasil_tampil: false,
               reset_login: true,
-              ulang_kkm: false
+              ulang_kkm: false,
+              bank_soal_id: '',
+              kkm: 70
             });
             setShowModal(true);
           }}
@@ -334,14 +300,14 @@ export default function AdminJadwalUjian() {
         </div>
       </div>
 
-      {/* Modal Tambah Ujian (Premium Refinement) */}
+      {/* Modal Tambah Ujian */}
       {showModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md animate-in fade-in duration-300">
           <div className="bg-white w-full max-w-xl rounded-[32px] shadow-2xl overflow-hidden border border-white/20 animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]">
             
             {/* Header Modal */}
             <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between">
-              <h2 className="text-xl font-black text-slate-800 tracking-tight">Tambah Ujian</h2>
+              <h2 className="text-xl font-black text-slate-800 tracking-tight">{isEdit ? 'Edit Ujian' : 'Tambah Ujian'}</h2>
               <button onClick={() => setShowModal(false)} className="w-10 h-10 flex items-center justify-center hover:bg-slate-100 rounded-full text-slate-400 hover:text-red-500 transition-all">
                 <X className="w-6 h-6" />
               </button>
@@ -349,7 +315,7 @@ export default function AdminJadwalUjian() {
 
             <form onSubmit={handleSave} className="flex-1 overflow-y-auto custom-scrollbar p-8 space-y-6">
               
-              <div className="grid grid-cols-2 gap-5">
+              <div className="grid grid-cols-1 gap-5">
                 <div className="space-y-1.5">
                   <label className="text-[13px] font-black text-slate-700 ml-1">Nama Ujian</label>
                   <div className="relative">
@@ -368,40 +334,47 @@ export default function AdminJadwalUjian() {
                     <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                   </div>
                 </div>
-                
-                {/* Guru Pengampu Removed as per request */}
-              </div>
 
-              <div className="grid grid-cols-2 gap-5">
                 <div className="space-y-1.5">
-                  <label className="text-[13px] font-black text-slate-700 ml-1">Mata Pelajaran</label>
+                  <label className="text-[13px] font-black text-slate-700 ml-1">Bank Soal (Kode)</label>
                   <div className="relative">
                     <select 
                       required
                       className="w-full pl-4 pr-10 py-3.5 bg-slate-50/80 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-bold text-slate-700 appearance-none cursor-pointer"
-                      value={formData.mapel_id}
-                      onChange={(e) => setFormData({ ...formData, mapel_id: e.target.value })}
+                      value={formData.bank_soal_id}
+                      onChange={(e) => {
+                        const selectedBs = bankSoals.find(b => b.id === e.target.value);
+                        setFormData({ 
+                          ...formData, 
+                          bank_soal_id: e.target.value,
+                          mapel_id: selectedBs?.mapel_id || '',
+                          kelas_id: selectedBs?.kelas_id || '',
+                          kkm: selectedBs?.kkm || 70
+                        });
+                      }}
                     >
-                      <option value="">-- Pilih --</option>
-                      {mapels.map(m => <option key={m.id} value={m.id}>{m.nama_mapel}</option>)}
+                      <option value="">-- Pilih Bank Soal --</option>
+                      {bankSoals.map(b => (
+                        <option key={b.id} value={b.id}>
+                          {b.kode_bank_soal} ({b.master_mapel?.nama_mapel} - {b.master_kelas?.nama_kelas})
+                        </option>
+                      ))}
                     </select>
                     <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                   </div>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-5 opacity-60 pointer-events-none">
+                <div className="space-y-1.5">
+                  <label className="text-[13px] font-black text-slate-700 ml-1">Mata Pelajaran</label>
+                  <input readOnly className="w-full px-5 py-3.5 bg-slate-100 border border-slate-200 rounded-2xl font-bold text-slate-500 outline-none"
+                    value={mapels.find(m => m.id === formData.mapel_id)?.nama_mapel || '-'} />
+                </div>
                 <div className="space-y-1.5">
                   <label className="text-[13px] font-black text-slate-700 ml-1">Kelas</label>
-                  <div className="relative">
-                    <select 
-                      required
-                      className="w-full pl-4 pr-10 py-3.5 bg-slate-50/80 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-bold text-slate-700 appearance-none cursor-pointer"
-                      value={formData.kelas_id}
-                      onChange={(e) => setFormData({ ...formData, kelas_id: e.target.value })}
-                    >
-                      <option value="">-- Pilih --</option>
-                      {kelas.map(k => <option key={k.id} value={k.id}>{k.nama_kelas}</option>)}
-                    </select>
-                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                  </div>
+                  <input readOnly className="w-full px-5 py-3.5 bg-slate-100 border border-slate-200 rounded-2xl font-bold text-slate-500 outline-none"
+                    value={kelas.find(k => k.id === formData.kelas_id)?.nama_kelas || '-'} />
                 </div>
               </div>
 

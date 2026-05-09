@@ -87,74 +87,79 @@ export default function GuruHasilUjian() {
   const lulusCount = hasilList.filter(h => h.nilai_total >= kkm).length;
 
   const exportToPDF = () => {
-    if (hasilList.length === 0) {
-      toast.error('Tidak ada data hasil nilai untuk diexport.');
-      return;
-    }
+    try {
+      if (hasilList.length === 0) {
+        toast.error('Tidak ada data hasil nilai untuk diexport.');
+        return;
+      }
 
-    const doc = new jsPDF();
-    const mapel = jadwal?.bank_soal?.master_mapel?.nama_mapel || 'Mapel';
-    const kelasName = jadwal?.master_kelas?.nama_kelas || 'Kelas';
-    const namaUjian = jadwal?.nama_ujian || 'Ujian';
+      const doc = new jsPDF();
+      const mapel = jadwal?.bank_soal?.master_mapel?.nama_mapel || 'Mapel';
+      const kelasName = jadwal?.master_kelas?.nama_kelas || 'Kelas';
+      const namaUjian = jadwal?.nama_ujian || 'Ujian';
 
-    // Header Laporan
-    doc.setFontSize(16);
-    doc.text(`Laporan Hasil Ujian - ${namaUjian}`, 14, 15);
-    
-    doc.setFontSize(10);
-    doc.text(`Mata Pelajaran : ${mapel}`, 14, 23);
-    doc.text(`Kelas          : ${kelasName}`, 14, 28);
-    doc.text(`KKM            : ${kkm}`, 14, 33);
-    doc.text(`Total Peserta  : ${hasilList.length} Siswa`, 14, 38);
+      // Header Laporan
+      doc.setFontSize(16);
+      doc.text(`Laporan Hasil Ujian - ${namaUjian}`, 14, 15);
+      
+      doc.setFontSize(10);
+      doc.text(`Mata Pelajaran : ${mapel}`, 14, 23);
+      doc.text(`Kelas          : ${kelasName}`, 14, 28);
+      doc.text(`KKM            : ${kkm}`, 14, 33);
+      doc.text(`Total Peserta  : ${hasilList.length} Siswa`, 14, 38);
 
-    // Persiapan Data Tabel
-    const tableColumn = ["No", "No. Peserta", "Nama Siswa", "Nilai PG", "Nilai Essay", "Nilai Total", "Keterangan"];
-    const tableRows = [];
+      // Persiapan Data Tabel
+      const tableColumn = ["No", "No. Peserta", "Nama Siswa", "Nilai PG", "Nilai Essay", "Nilai Total", "Keterangan"];
+      const tableRows = [];
 
-    hasilList.forEach((item, index) => {
-      const lulus = item.nilai_total >= kkm ? 'LULUS' : 'REMIDI';
-      const rowData = [
-        index + 1,
-        item.peserta_ujian?.nomor_peserta || '-',
-        item.profiles?.nama_lengkap || '-',
-        item.nilai_pg?.toFixed(0) ?? 0,
-        item.nilai_essay?.toFixed(0) ?? 0,
-        item.nilai_total?.toFixed(0) ?? 0,
-        lulus
-      ];
-      tableRows.push(rowData);
-    });
+      hasilList.forEach((item, index) => {
+        const lulusStatus = item.nilai_total >= kkm ? 'LULUS' : 'REMIDI';
+        const rowData = [
+          index + 1,
+          item.peserta_ujian?.nomor_peserta || '-',
+          item.profiles?.nama_lengkap || '-',
+          item.nilai_pg?.toFixed(0) ?? 0,
+          item.nilai_essay?.toFixed(0) ?? 0,
+          item.nilai_total?.toFixed(0) ?? 0,
+          lulusStatus
+        ];
+        tableRows.push(rowData);
+      });
 
-    // Render Tabel
-    doc.autoTable({
-      head: [tableColumn],
-      body: tableRows,
-      startY: 45,
-      theme: 'grid',
-      headStyles: { fillColor: [79, 70, 229] }, // indigo-600
-      styles: { fontSize: 9, cellPadding: 3 },
-      columnStyles: {
-        0: { halign: 'center', cellWidth: 10 },
-        1: { halign: 'center' },
-        3: { halign: 'center' },
-        4: { halign: 'center' },
-        5: { halign: 'center', fontStyle: 'bold' },
-        6: { halign: 'center', fontStyle: 'bold' }
-      },
-      didParseCell: function(data) {
-        // Beri warna merah untuk yang remidi di kolom keterangan
-        if (data.section === 'body' && data.column.index === 6) {
-          if (data.cell.raw === 'REMIDI') {
-            data.cell.styles.textColor = [220, 38, 38]; // red-600
-          } else {
-            data.cell.styles.textColor = [5, 150, 105]; // emerald-600
+      // Render Tabel
+      doc.autoTable({
+        head: [tableColumn],
+        body: tableRows,
+        startY: 45,
+        theme: 'grid',
+        headStyles: { fillColor: [79, 70, 229] }, // indigo-600
+        styles: { fontSize: 9, cellPadding: 3 },
+        columnStyles: {
+          0: { halign: 'center', cellWidth: 10 },
+          1: { halign: 'center' },
+          3: { halign: 'center' },
+          4: { halign: 'center' },
+          5: { halign: 'center', fontStyle: 'bold' },
+          6: { halign: 'center', fontStyle: 'bold' }
+        },
+        didParseCell: function(data) {
+          if (data.section === 'body' && data.column.index === 6) {
+            if (data.cell.raw === 'REMIDI') {
+              data.cell.styles.textColor = [220, 38, 38];
+            } else {
+              data.cell.styles.textColor = [5, 150, 105];
+            }
           }
         }
-      }
-    });
+      });
 
-    const dateStr = new Date().toLocaleDateString('id-ID').replace(/\//g, '-');
-    doc.save(`Hasil_Nilai_${kelasName}_${mapel}_${dateStr}.pdf`);
+      const dateStr = new Date().toLocaleDateString('id-ID').replace(/\//g, '-');
+      doc.save(`Hasil_Nilai_${kelasName}_${mapel}_${dateStr}.pdf`);
+      toast.success('PDF berhasil dibuat');
+    } catch (error) {
+      console.error('PDF Error:', error);
+      toast.error('Gagal membuat PDF: ' + error.message);
+    }
   };
 
   return (

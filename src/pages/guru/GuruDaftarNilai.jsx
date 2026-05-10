@@ -30,7 +30,6 @@ export default function GuruDaftarNilai() {
           bank_soal(kode_bank_soal, master_mapel(nama_mapel)),
           master_kelas(nama_kelas)
         `)
-        .eq('guru_id', profile.id)
         .order('created_at', { ascending: false });
       if (error) throw error;
       setData(res || []);

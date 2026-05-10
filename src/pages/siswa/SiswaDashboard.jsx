@@ -23,7 +23,7 @@ export default function SiswaDashboard() {
         const { data: detail, error: detailErr } = await supabase
           .from('peserta_ujian')
           .select('*, master_kelas(nama_kelas)')
-          .eq('id', profile.id)
+          .eq('siswa_id', profile.id)
           .maybeSingle();
 
         if (detailErr) throw detailErr;

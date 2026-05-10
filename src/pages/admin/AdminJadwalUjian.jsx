@@ -111,6 +111,7 @@ export default function AdminJadwalUjian() {
         jenis_ujian_id: formData.jenis_ujian_id,
         guru_id: formData.guru_id || null,
         bank_soal_id: formData.bank_soal_id,
+        kelas_id: formData.kelas_id,
         token: formData.token,
         durasi_menit: formData.durasi_menit,
         waktu_mulai: formData.waktu_mulai,

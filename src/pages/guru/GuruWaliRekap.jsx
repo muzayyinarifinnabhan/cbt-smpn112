@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuthStore } from '../../store/useAuthStore';
 import { toast } from 'sonner';
-import { ChevronDown, Download, Award, Trash2 } from 'lucide-react';
+import { ChevronDown, Download, Award, Trash2, RefreshCw } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useConfirmStore } from '../../store/useConfirmStore';
 import jsPDF from 'jspdf';
@@ -36,22 +36,42 @@ export default function GuruWaliRekap() {
   const fetchJadwal = async () => {
     setLoadingJadwal(true);
     try {
-      const { data, error } = await supabase
+      // 1. Ambil ID kelas wali-nya dari tabel master_kelas (berdasarkan nama kelas di profil)
+      let myClassIds = [];
+      if (profile?.is_wali_kelas && profile?.kelas_diwalikan) {
+        const { data: classData } = await supabase
+          .from('master_kelas')
+          .select('id')
+          .eq('nama_kelas', profile.kelas_diwalikan)
+          .maybeSingle();
+        
+        if (classData) myClassIds = [classData.id];
+      }
+
+      // 2. Ambil jadwal: yang dibuat oleh guru ini ATAU yang ditujukan ke kelas wali-nya
+      let query = supabase
         .from('jadwal_ujian')
         .select(`
           id,
           nama_ujian,
           kelas_id,
+          bank_soal_id,
           master_kelas(nama_kelas),
           bank_soal(kkm, master_mapel(nama_mapel))
-        `)
-        .eq('guru_id', profile.id)
-        .order('created_at', { ascending: false });
+        `);
+
+      if (myClassIds.length > 0) {
+        query = query.or(`guru_id.eq.${profile.id},kelas_id.in.(${myClassIds.join(',')})`);
+      } else {
+        query = query.eq('guru_id', profile.id);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) throw error;
       
       setJadwalList(data || []);
-      if (data && data.length > 0) {
+      if (data && data.length > 0 && !selectedJadwalId) {
         setSelectedJadwalId(data[0].id);
       }
     } catch (err) {
@@ -83,7 +103,7 @@ export default function GuruWaliRekap() {
         
       if (pesertaList) {
         finalHasil = finalHasil.map(h => {
-          const p = pesertaList.find(pes => pes.id === h.siswa_id);
+          const p = pesertaList.find(pes => pes.siswa_id === h.siswa_id);
           return {
             ...h,
             peserta_ujian: { nomor_peserta: p?.nomor_peserta || '-' }
@@ -109,7 +129,6 @@ export default function GuruWaliRekap() {
       onConfirm: async () => {
         setIsDeleting(item.id);
         try {
-          // 1. Hapus hasil_nilai
           const { error: err1 } = await supabase
             .from('hasil_nilai')
             .delete()
@@ -117,7 +136,6 @@ export default function GuruWaliRekap() {
           
           if (err1) throw err1;
 
-          // 2. Hapus ujian_aktif (agar bisa ujian lagi jika mau)
           await supabase
             .from('ujian_aktif')
             .delete()
@@ -125,15 +143,70 @@ export default function GuruWaliRekap() {
             .eq('jadwal_ujian_id', item.jadwal_ujian_id);
 
           toast.success('Hasil nilai berhasil dihapus');
-          fetchHasil(selectedJadwalId); // Refresh list
+          fetchHasil(selectedJadwalId);
         } catch (error) {
           toast.error('Gagal menghapus hasil nilai');
-          console.error(error);
         } finally {
           setIsDeleting(null);
         }
       }
     });
+  };
+
+  const handleRecalculate = async (item) => {
+    try {
+      const { data: session } = await supabase
+        .from('ujian_aktif')
+        .select('*')
+        .eq('siswa_id', item.siswa_id)
+        .eq('jadwal_ujian_id', selectedJadwalId)
+        .single();
+      
+      if (!session || !session.jawaban_pg) {
+        toast.error('Data jawaban tidak ditemukan di server.');
+        return;
+      }
+
+      const { data: soalList } = await supabase
+        .from('soal')
+        .select('id, kunci_jawaban')
+        .eq('bank_soal_id', selectedJadwal?.bank_soal_id);
+      
+      const { data: bankSoal } = await supabase
+        .from('bank_soal')
+        .select('pg_bobot')
+        .eq('id', selectedJadwal?.bank_soal_id)
+        .single();
+
+      let benar = 0;
+      let salah = 0;
+      let kosong = 0;
+      const answers = session.jawaban_pg;
+
+      soalList?.forEach(soal => {
+        const jawabanSiswa = answers[soal.id]?.jawaban;
+        if (!jawabanSiswa) kosong++;
+        else if (jawabanSiswa.toString().toLowerCase() === soal.kunci_jawaban.toString().toLowerCase()) benar++;
+        else salah++;
+      });
+
+      const dbBobot = Number(bankSoal?.pg_bobot || 0);
+      const bobot = (dbBobot > 0) ? dbBobot : (100 / (soalList?.length || 1));
+      const nilaiTotal = benar * bobot;
+
+      await supabase.from('hasil_nilai').update({
+        pg_benar: benar,
+        pg_salah: salah,
+        pg_kosong: kosong,
+        nilai_pg: nilaiTotal,
+        nilai_total: nilaiTotal
+      }).eq('id', item.id);
+
+      toast.success(`Berhasil menghitung ulang nilai ${item.profiles?.nama_lengkap}`);
+      fetchHasil(selectedJadwalId);
+    } catch (err) {
+      toast.error('Gagal hitung ulang: ' + err.message);
+    }
   };
 
   const selectedJadwal = jadwalList.find(j => j.id === selectedJadwalId);
@@ -185,7 +258,7 @@ export default function GuruWaliRekap() {
       body: tableRows,
       startY: 45,
       theme: 'grid',
-      headStyles: { fillColor: [79, 70, 229] }, // indigo-600
+      headStyles: { fillColor: [79, 70, 229] },
       styles: { fontSize: 9, cellPadding: 3 },
       columnStyles: {
         0: { halign: 'center', cellWidth: 10 },
@@ -214,7 +287,6 @@ export default function GuruWaliRekap() {
     <div className="min-h-full bg-[#f8fafc] animate-in fade-in duration-500">
       <div className="p-6 md:p-8">
         
-        {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
             <h1 className="text-[28px] font-bold text-slate-800 tracking-tight leading-none mb-2">
@@ -261,7 +333,6 @@ export default function GuruWaliRekap() {
           </div>
         </div>
 
-        {/* Stats Cards */}
         {selectedJadwalId && (
           <div className="grid grid-cols-3 gap-4 mb-6">
             {[
@@ -277,7 +348,6 @@ export default function GuruWaliRekap() {
           </div>
         )}
 
-        {/* Tabel Hasil */}
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
             <h2 className="text-[15px] font-bold text-slate-800">Rekap Nilai Siswa</h2>
@@ -306,9 +376,9 @@ export default function GuruWaliRekap() {
                 {!selectedJadwalId ? (
                   <tr><td colSpan="8" className="px-6 py-12 text-center text-slate-400">Silakan pilih jadwal ujian terlebih dahulu.</td></tr>
                 ) : loadingData ? (
-                  <tr><td colSpan="7" className="px-6 py-12 text-center text-slate-500">Memuat hasil nilai...</td></tr>
+                  <tr><td colSpan="8" className="px-6 py-12 text-center text-slate-500">Memuat hasil nilai...</td></tr>
                 ) : hasilList.length === 0 ? (
-                  <tr><td colSpan="7" className="px-6 py-12 text-center text-slate-400">
+                  <tr><td colSpan="8" className="px-6 py-12 text-center text-slate-400">
                     Belum ada hasil nilai. Nilai akan muncul setelah siswa menyelesaikan ujian.
                   </td></tr>
                 ) : hasilList.map((item, idx) => {
@@ -334,17 +404,27 @@ export default function GuruWaliRekap() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-center">
-                        <button 
-                          onClick={() => handleDelete(item)}
-                          disabled={isDeleting === item.id}
-                          className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all active:scale-90 disabled:opacity-50"
-                        >
-                          {isDeleting === item.id ? (
-                            <div className="w-4 h-4 border-2 border-red-200 border-t-red-500 rounded-full animate-spin" />
-                          ) : (
-                            <Trash2 className="w-4 h-4" />
-                          )}
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          <button 
+                            onClick={() => handleRecalculate(item)}
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                            title="Hitung Ulang Nilai"
+                          >
+                            <RefreshCw className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={() => handleDelete(item)}
+                            disabled={isDeleting === item.id}
+                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all active:scale-90 disabled:opacity-50"
+                            title="Hapus Nilai"
+                          >
+                            {isDeleting === item.id ? (
+                              <div className="w-4 h-4 border-2 border-red-200 border-t-red-500 rounded-full animate-spin" />
+                            ) : (
+                              <Trash2 className="w-4 h-4" />
+                            )}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

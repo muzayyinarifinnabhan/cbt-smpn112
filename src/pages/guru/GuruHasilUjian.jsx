@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Award, Download } from 'lucide-react';
+import { ArrowLeft, Award, Download, RefreshCw, Trash2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Link, useParams } from 'react-router-dom';
 import { clsx } from 'clsx';
@@ -62,12 +62,9 @@ export default function GuruHasilUjian() {
           .eq('kelas_id', jadwalData.kelas_id);
           
         if (pesertaList) {
-          finalHasil = finalHasil.map(h => {
-            const p = pesertaList.find(pes => pes.siswa_id === h.siswa_id);
-            return {
-              ...h,
-              peserta_ujian: { nomor_peserta: p?.nomor_peserta || '-' }
-            };
+          finalHasil = hasil.map(h => {
+            const p = pesertaList.find(pl => pl.siswa_id === h.siswa_id);
+            return { ...h, peserta_ujian: p };
           });
         }
       }
@@ -86,7 +83,63 @@ export default function GuruHasilUjian() {
     : 0;
   const lulusCount = hasilList.filter(h => h.nilai_total >= kkm).length;
 
-  const exportToPDF = () => {
+  const handleRecalculate = async (item) => {
+    try {
+      const { data: session } = await supabase
+        .from('ujian_aktif')
+        .select('*')
+        .eq('siswa_id', item.siswa_id)
+        .eq('jadwal_ujian_id', id)
+        .single();
+      
+      if (!session || !session.jawaban_pg) {
+        toast.error('Data jawaban tidak ditemukan di server.');
+        return;
+      }
+
+      const { data: soalList } = await supabase
+        .from('soal')
+        .select('id, kunci_jawaban')
+        .eq('bank_soal_id', jadwal.bank_soal_id);
+      
+      let benar = 0;
+      let salah = 0;
+      let kosong = 0;
+      const answers = session.jawaban_pg;
+
+      soalList?.forEach(soal => {
+        const jawabanSiswa = answers[soal.id]?.jawaban;
+        if (!jawabanSiswa) kosong++;
+        else if (jawabanSiswa.toString().toLowerCase() === soal.kunci_jawaban.toString().toLowerCase()) benar++;
+        else salah++;
+      });
+
+      const dbBobot = Number(jadwal?.bank_soal?.pg_bobot || 0);
+      const bobot = (dbBobot > 0) ? dbBobot : (100 / (soalList?.length || 1));
+      const nilaiTotal = benar * bobot;
+
+      await supabase.from('hasil_nilai').update({
+        pg_benar: benar,
+        pg_salah: salah,
+        pg_kosong: kosong,
+        nilai_pg: nilaiTotal,
+        nilai_total: nilaiTotal
+      }).eq('id', item.id);
+
+      toast.success(`Berhasil menghitung ulang nilai ${item.profiles?.nama_lengkap}`);
+      fetchData();
+    } catch (err) {
+      toast.error('Gagal hitung ulang: ' + err.message);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('Yakin ingin menghapus hasil ini?')) return;
+    await supabase.from('hasil_nilai').delete().eq('id', id);
+    fetchData();
+  };
+
+  const exportToPDF = async () => {
     try {
       if (hasilList.length === 0) {
         toast.error('Tidak ada data hasil nilai untuk diexport.');
@@ -98,7 +151,6 @@ export default function GuruHasilUjian() {
       const kelasName = jadwal?.master_kelas?.nama_kelas || 'Kelas';
       const namaUjian = jadwal?.nama_ujian || 'Ujian';
 
-      // Header Laporan
       doc.setFontSize(16);
       doc.text(`Laporan Hasil Ujian - ${namaUjian}`, 14, 15);
       
@@ -108,7 +160,6 @@ export default function GuruHasilUjian() {
       doc.text(`KKM            : ${kkm}`, 14, 33);
       doc.text(`Total Peserta  : ${hasilList.length} Siswa`, 14, 38);
 
-      // Persiapan Data Tabel
       const tableColumn = ["No", "No. Peserta", "Nama Siswa", "Nilai PG", "Nilai Essay", "Nilai Total", "Keterangan"];
       const tableRows = [];
 
@@ -126,13 +177,12 @@ export default function GuruHasilUjian() {
         tableRows.push(rowData);
       });
 
-      // Render Tabel
       doc.autoTable({
         head: [tableColumn],
         body: tableRows,
         startY: 45,
         theme: 'grid',
-        headStyles: { fillColor: [79, 70, 229] }, // indigo-600
+        headStyles: { fillColor: [79, 70, 229] },
         styles: { fontSize: 9, cellPadding: 3 },
         columnStyles: {
           0: { halign: 'center', cellWidth: 10 },
@@ -166,7 +216,6 @@ export default function GuruHasilUjian() {
     <div className="min-h-full bg-[#f8fafc] animate-in fade-in duration-500">
       <div className="p-6 md:p-8">
 
-        {/* Header */}
         <div className="bg-white border border-slate-200 rounded-2xl px-6 py-5 flex items-center justify-between shadow-sm mb-6">
           <div className="flex items-center gap-4">
             <Link to="/guru/jadwal" className="p-2 hover:bg-slate-100 rounded-full transition-all text-slate-500">
@@ -190,7 +239,6 @@ export default function GuruHasilUjian() {
           </button>
         </div>
 
-        {/* Stats Cards */}
         <div className="grid grid-cols-3 gap-4 mb-6">
           {[
             { label: 'Peserta', value: hasilList.length, color: 'text-slate-700', bg: 'bg-white', border: 'border-slate-200' },
@@ -204,7 +252,6 @@ export default function GuruHasilUjian() {
           ))}
         </div>
 
-        {/* Tabel Hasil */}
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
             <h2 className="text-[15px] font-bold text-slate-800">Rekap Nilai Siswa</h2>
@@ -224,13 +271,14 @@ export default function GuruHasilUjian() {
                   <th className="px-6 py-4 text-center">Nilai Essay</th>
                   <th className="px-6 py-4 text-center">Nilai Total</th>
                   <th className="px-6 py-4 text-center">Keterangan</th>
+                  <th className="px-6 py-4 text-center">Aksi</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan="7" className="px-6 py-12 text-center text-slate-500">Memuat hasil nilai...</td></tr>
+                  <tr><td colSpan="8" className="px-6 py-12 text-center text-slate-500">Memuat hasil nilai...</td></tr>
                 ) : hasilList.length === 0 ? (
-                  <tr><td colSpan="7" className="px-6 py-12 text-center text-slate-400">
+                  <tr><td colSpan="8" className="px-6 py-12 text-center text-slate-400">
                     Belum ada hasil nilai. Nilai akan muncul setelah siswa menyelesaikan ujian.
                   </td></tr>
                 ) : hasilList.map((item, idx) => {
@@ -254,6 +302,20 @@ export default function GuruHasilUjian() {
                           lulus ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700")}>
                           {lulus ? 'LULUS' : 'REMIDI'}
                         </span>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <button 
+                            onClick={() => handleRecalculate(item)}
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                            title="Hitung Ulang Nilai"
+                          >
+                            <RefreshCw className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => handleDelete(item.id)} className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

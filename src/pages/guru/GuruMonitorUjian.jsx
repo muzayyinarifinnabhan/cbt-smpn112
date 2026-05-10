@@ -42,11 +42,24 @@ export default function GuruMonitorUjian() {
   const fetchJadwal = async () => {
     const { data } = await supabase
       .from('jadwal_ujian')
-      .select('*, bank_soal(kode_bank_soal, master_mapel(nama_mapel)), master_kelas(nama_kelas)')
+      .select('*, bank_soal(kode_bank_soal, kelas_id, master_mapel(nama_mapel)), master_kelas(nama_kelas)')
       .eq('id', id)
       .single();
-    setJadwal(data);
-    if (data?.kelas_id) fetchPeserta(data.kelas_id);
+    
+    if (data) {
+      setJadwal(data);
+      // Fallback kelas_id: prioritaskan dari jadwal, lalu dari bank_soal
+      const effectiveKelasId = data.kelas_id || data.bank_soal?.kelas_id;
+      
+      if (effectiveKelasId) {
+        fetchPeserta(effectiveKelasId);
+      } else {
+        setLoading(false);
+        toast.error('Jadwal ini tidak memiliki data kelas yang valid.');
+      }
+    } else {
+      setLoading(false);
+    }
   };
 
   const fetchPeserta = async (kelasId) => {

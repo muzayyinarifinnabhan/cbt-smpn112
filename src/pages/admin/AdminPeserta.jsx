@@ -169,17 +169,18 @@ export default function AdminPeserta() {
         }).eq('id', profileId);
 
         // Peserta update
-        await supabase.from('peserta_ujian').update({
-          nomor_peserta: formData.no_peserta,
-          foto_url: fotoUrl,
-          agama: formData.agama,
-          kelas_id: formData.kelas_id,
-          level_id: formData.level_id,
-          sesi_id: formData.sesi_id,
-          ruangan_id: formData.ruangan_id,
-          server_id: formData.server_id,
-          password_plain: formData.password
-        }).eq('id', profileId);
+          await supabase.from('peserta_ujian').update({
+            nomor_peserta: formData.no_peserta,
+            siswa_id: profileId, // Pastikan siswa_id terisi
+            foto_url: fotoUrl,
+            agama: formData.agama,
+            kelas_id: formData.kelas_id,
+            level_id: formData.level_id,
+            sesi_id: formData.sesi_id,
+            ruangan_id: formData.ruangan_id,
+            server_id: formData.server_id,
+            password_plain: formData.password
+          }).eq('id', profileId);
 
         toast.success('Data peserta berhasil diperbarui');
       } else {
@@ -200,6 +201,7 @@ export default function AdminPeserta() {
         const { error: sErr } = await supabase.from('peserta_ujian').insert([
           {
             id: newId,
+            siswa_id: newId, // Set siswa_id sama dengan id
             nomor_peserta: formData.no_peserta,
             foto_url: fotoUrl,
             agama: formData.agama,

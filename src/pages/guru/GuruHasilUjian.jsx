@@ -44,32 +44,53 @@ export default function GuruHasilUjian() {
         .single();
       setJadwal(jadwalData);
 
-      // 2. Hasil nilai (tanpa join peserta_ujian langsung untuk menghindari error relasi)
+      // 2. Hasil nilai dengan join ke profiles -> peserta_ujian -> master_kelas
       const { data: hasil, error } = await supabase
         .from('hasil_nilai')
-        .select('*, profiles(nama_lengkap)')
+        .select(`
+          *,
+          profiles (
+            nama_lengkap,
+            peserta_ujian!peserta_ujian_id_fkey (
+              nomor_peserta,
+              master_kelas (nama_kelas)
+            )
+          )
+        `)
         .eq('jadwal_ujian_id', id)
         .order('nilai_total', { ascending: false });
 
-      if (error) throw error;
-
-      // 3. Ambil data nomor peserta berdasarkan kelas_id dari jadwal
-      let finalHasil = hasil || [];
-      if (jadwalData?.kelas_id) {
-        const { data: pesertaList } = await supabase
-          .from('peserta_ujian')
-          .select('siswa_id, nomor_peserta')
-          .eq('kelas_id', jadwalData.kelas_id);
-          
-        if (pesertaList) {
-          finalHasil = hasil.map(h => {
-            const p = pesertaList.find(pl => pl.siswa_id === h.siswa_id);
-            return { ...h, peserta_ujian: p };
-          });
-        }
+      if (error) {
+        // Fallback jika join spesifik fkey gagal
+        const { data: fallbackHasil, error: fallbackError } = await supabase
+          .from('hasil_nilai')
+          .select(`
+            *,
+            profiles (
+              nama_lengkap,
+              peserta_ujian (
+                nomor_peserta,
+                master_kelas (nama_kelas)
+              )
+            )
+          `)
+          .eq('jadwal_ujian_id', id)
+          .order('nilai_total', { ascending: false });
+        
+        if (fallbackError) throw fallbackError;
+        
+        const flattened = (fallbackHasil || []).map(h => ({
+          ...h,
+          peserta_ujian: h.profiles?.peserta_ujian?.[0] || null
+        }));
+        setHasilList(flattened);
+      } else {
+        const flattened = (hasil || []).map(h => ({
+          ...h,
+          peserta_ujian: h.profiles?.peserta_ujian?.[0] || null
+        }));
+        setHasilList(flattened);
       }
-
-      setHasilList(finalHasil);
     } catch (err) {
       toast.error('Gagal memuat hasil: ' + err.message);
     } finally {
@@ -160,7 +181,7 @@ export default function GuruHasilUjian() {
       doc.text(`KKM            : ${kkm}`, 14, 33);
       doc.text(`Total Peserta  : ${hasilList.length} Siswa`, 14, 38);
 
-      const tableColumn = ["No", "No. Peserta", "Nama Siswa", "Nilai PG", "Nilai Essay", "Nilai Total", "Keterangan"];
+      const tableColumn = ["No", "No. Peserta", "Nama Siswa", "Kelas", "Nilai PG", "Nilai Essay", "Nilai Total", "Keterangan"];
       const tableRows = [];
 
       hasilList.forEach((item, index) => {
@@ -169,6 +190,7 @@ export default function GuruHasilUjian() {
           index + 1,
           item.peserta_ujian?.nomor_peserta || '-',
           item.profiles?.nama_lengkap || '-',
+          item.peserta_ujian?.master_kelas?.nama_kelas || '-',
           item.nilai_pg?.toFixed(0) ?? 0,
           item.nilai_essay?.toFixed(0) ?? 0,
           item.nilai_total?.toFixed(0) ?? 0,
@@ -264,9 +286,10 @@ export default function GuruHasilUjian() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-slate-100 text-slate-500 text-[13px] font-semibold">
-                  <th className="px-6 py-4">No</th>
+                   <th className="px-6 py-4">No</th>
                   <th className="px-6 py-4">No. Peserta</th>
                   <th className="px-6 py-4">Nama Siswa</th>
+                  <th className="px-6 py-4">Kelas</th>
                   <th className="px-6 py-4 text-center">Nilai PG</th>
                   <th className="px-6 py-4 text-center">Nilai Essay</th>
                   <th className="px-6 py-4 text-center">Nilai Total</th>
@@ -276,9 +299,9 @@ export default function GuruHasilUjian() {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan="8" className="px-6 py-12 text-center text-slate-500">Memuat hasil nilai...</td></tr>
+                  <tr><td colSpan="9" className="px-6 py-12 text-center text-slate-500">Memuat hasil nilai...</td></tr>
                 ) : hasilList.length === 0 ? (
-                  <tr><td colSpan="8" className="px-6 py-12 text-center text-slate-400">
+                  <tr><td colSpan="9" className="px-6 py-12 text-center text-slate-400">
                     Belum ada hasil nilai. Nilai akan muncul setelah siswa menyelesaikan ujian.
                   </td></tr>
                 ) : hasilList.map((item, idx) => {
@@ -289,7 +312,14 @@ export default function GuruHasilUjian() {
                       <td className="px-6 py-4 text-[12px] font-mono text-slate-600 font-semibold">
                         {item.peserta_ujian?.nomor_peserta || '-'}
                       </td>
-                      <td className="px-6 py-4 text-[14px] font-semibold text-slate-800">{item.profiles?.nama_lengkap || '-'}</td>
+                      <td className="px-6 py-4 text-[14px] font-semibold text-slate-800">
+                        {item.profiles?.nama_lengkap || '-'}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="px-2 py-1 bg-slate-100 text-slate-600 text-[11px] font-bold rounded uppercase">
+                          {item.peserta_ujian?.master_kelas?.nama_kelas || '-'}
+                        </span>
+                      </td>
                       <td className="px-6 py-4 text-center font-bold text-[14px] text-slate-700">{item.nilai_pg?.toFixed(0) ?? 0}</td>
                       <td className="px-6 py-4 text-center font-bold text-[14px] text-slate-700">{item.nilai_essay?.toFixed(0) ?? 0}</td>
                       <td className="px-6 py-4 text-center">

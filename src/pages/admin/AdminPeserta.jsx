@@ -74,12 +74,11 @@ export default function AdminPeserta() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Fetch with relations
-      const { data: res, error } = await supabase
+      // Ambil data peserta
+      const { data: peserta, error: pErr } = await supabase
         .from('peserta_ujian')
         .select(`
           *,
-          profiles (nama_lengkap, username),
           master_kelas (nama_kelas),
           master_level (nama_level),
           master_sesi (nama_sesi),
@@ -88,11 +87,26 @@ export default function AdminPeserta() {
         `)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setData(res || []);
+      if (pErr) throw pErr;
+
+      // Ambil semua profiles role siswa
+      const { data: profileList, error: prErr } = await supabase
+        .from('profiles')
+        .select('id, nama_lengkap, username')
+        .eq('role', 'siswa');
+
+      if (prErr) throw prErr;
+
+      // Gabungkan manual: peserta_ujian.id === profiles.id
+      const merged = (peserta || []).map(p => ({
+        ...p,
+        profiles: profileList?.find(pr => pr.id === p.id) || null
+      }));
+
+      setData(merged);
     } catch (error) {
       toast.error('Gagal memuat data peserta');
-      console.error(error);
+      console.error('fetchData error:', error);
     } finally {
       setLoading(false);
     }
@@ -172,21 +186,26 @@ export default function AdminPeserta() {
       let profileId = selectedItem?.id;
       let fotoUrl = selectedItem?.foto_url;
 
-      // 1. Handle Photo Upload if exists
+      // 1. Handle Photo Upload if exists (non-blocking)
       if (formData.foto instanceof File) {
-        const fileExt = formData.foto.name.split('.').pop();
-        const fileName = `${formData.no_peserta}_${Math.random()}.${fileExt}`;
-        const { error: uploadError } = await supabase.storage
-          .from('foto_peserta')
-          .upload(fileName, formData.foto);
+        try {
+          const fileExt = formData.foto.name.split('.').pop();
+          const fileName = `${cleanNoPeserta}_${Date.now()}.${fileExt}`;
+          const { error: uploadError } = await supabase.storage
+            .from('foto_peserta')
+            .upload(fileName, formData.foto);
 
-        if (uploadError) {
-          console.error('Upload Error Details:', uploadError);
-          throw new Error(`Gagal mengunggah foto: ${uploadError.message}`);
+          if (uploadError) {
+            // Foto gagal upload tapi data tetap disimpan
+            console.warn('Upload foto gagal (diabaikan):', uploadError.message);
+            toast.warning('Data disimpan, tapi foto gagal diunggah. Cek pengaturan storage di Supabase.');
+          } else {
+            const { data: urlData } = supabase.storage.from('foto_peserta').getPublicUrl(fileName);
+            fotoUrl = urlData.publicUrl;
+          }
+        } catch (uploadErr) {
+          console.warn('Upload foto error (diabaikan):', uploadErr);
         }
-        
-        const { data: urlData } = supabase.storage.from('foto_peserta').getPublicUrl(fileName);
-        fotoUrl = urlData.publicUrl;
       }
 
       if (isEdit) {
@@ -200,6 +219,7 @@ export default function AdminPeserta() {
         // Peserta update
           await supabase.from('peserta_ujian').update({
             nomor_peserta: cleanNoPeserta,
+            siswa_id: profileId,
             foto_url: fotoUrl,
             agama: formData.agama,
             kelas_id: formData.kelas_id,
@@ -226,9 +246,9 @@ export default function AdminPeserta() {
         if (pErr) throw pErr;
 
         // 2. Create Peserta
-        const { error: sErr } = await supabase.from('peserta_ujian').insert([
-          {
+        const { error: sErr } = await supabase.from('peserta_ujian').insert([{
             id: newId,
+            siswa_id: newId,
             nomor_peserta: cleanNoPeserta,
             foto_url: fotoUrl,
             agama: formData.agama,
@@ -238,8 +258,7 @@ export default function AdminPeserta() {
             ruangan_id: formData.ruangan_id,
             server_id: formData.server_id,
             password_plain: formData.password
-          }
-        ]);
+        }]);
         if (sErr) throw sErr;
 
         toast.success('Peserta baru berhasil ditambahkan');

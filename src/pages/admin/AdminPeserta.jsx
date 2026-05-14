@@ -140,6 +140,35 @@ export default function AdminPeserta() {
     setSaving(true);
 
     try {
+      const cleanUsername = formData.username.trim();
+      const cleanNoPeserta = formData.no_peserta.trim();
+
+      // --- VALIDASI KEUNIKAN (Hanya untuk Create New) ---
+      if (!isEdit) {
+        // 1. Cek Username (Case Insensitive)
+        const { data: checkUser } = await supabase
+          .from('profiles')
+          .select('id, role')
+          .ilike('username', cleanUsername)
+          .maybeSingle();
+        
+        if (checkUser) {
+          const roleLabel = checkUser.role === 'siswa' ? 'peserta lain' : `seorang ${checkUser.role}`;
+          throw new Error(`Username "${cleanUsername}" sudah digunakan oleh ${roleLabel}. Silakan gunakan username yang berbeda.`);
+        }
+
+        // 2. Cek No Peserta
+        const { data: checkNo } = await supabase
+          .from('peserta_ujian')
+          .select('id')
+          .eq('nomor_peserta', cleanNoPeserta)
+          .maybeSingle();
+
+        if (checkNo) {
+          throw new Error(`Nomor Peserta "${cleanNoPeserta}" sudah terdaftar. Silakan gunakan nomor yang berbeda.`);
+        }
+      }
+
       let profileId = selectedItem?.id;
       let fotoUrl = selectedItem?.foto_url;
 
@@ -165,13 +194,12 @@ export default function AdminPeserta() {
         // Profile update
         await supabase.from('profiles').update({
           nama_lengkap: formData.nama_lengkap,
-          username: formData.username
+          username: cleanUsername
         }).eq('id', profileId);
 
         // Peserta update
           await supabase.from('peserta_ujian').update({
-            nomor_peserta: formData.no_peserta,
-            siswa_id: profileId, // Pastikan siswa_id terisi
+            nomor_peserta: cleanNoPeserta,
             foto_url: fotoUrl,
             agama: formData.agama,
             kelas_id: formData.kelas_id,
@@ -190,7 +218,7 @@ export default function AdminPeserta() {
         const { error: pErr } = await supabase.from('profiles').insert([
           {
             id: newId,
-            username: formData.username,
+            username: cleanUsername,
             nama_lengkap: formData.nama_lengkap,
             role: 'siswa'
           }
@@ -201,8 +229,7 @@ export default function AdminPeserta() {
         const { error: sErr } = await supabase.from('peserta_ujian').insert([
           {
             id: newId,
-            siswa_id: newId, // Set siswa_id sama dengan id
-            nomor_peserta: formData.no_peserta,
+            nomor_peserta: cleanNoPeserta,
             foto_url: fotoUrl,
             agama: formData.agama,
             kelas_id: formData.kelas_id,

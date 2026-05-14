@@ -39,59 +39,40 @@ export default function GuruHasilUjian() {
       // 1. Info jadwal
       const { data: jadwalData } = await supabase
         .from('jadwal_ujian')
-        .select('*, bank_soal(kode_bank_soal, kkm, master_mapel(nama_mapel)), master_kelas(nama_kelas)')
+        .select('*, bank_soal(kode_bank_soal, kkm, pg_bobot, master_mapel(nama_mapel)), master_kelas(nama_kelas)')
         .eq('id', id)
         .single();
       setJadwal(jadwalData);
 
-      // 2. Hasil nilai dengan join ke profiles -> peserta_ujian -> master_kelas
-      const { data: hasil, error } = await supabase
+      // 2. Ambil Hasil Nilai & Profiles
+      const { data: rawHasil, error: hErr } = await supabase
         .from('hasil_nilai')
-        .select(`
-          *,
-          profiles (
-            nama_lengkap,
-            peserta_ujian!peserta_ujian_id_fkey (
-              nomor_peserta,
-              master_kelas (nama_kelas)
-            )
-          )
-        `)
+        .select('*, profiles(nama_lengkap)')
         .eq('jadwal_ujian_id', id)
         .order('nilai_total', { ascending: false });
 
-      if (error) {
-        // Fallback jika join spesifik fkey gagal
-        const { data: fallbackHasil, error: fallbackError } = await supabase
-          .from('hasil_nilai')
-          .select(`
-            *,
-            profiles (
-              nama_lengkap,
-              peserta_ujian (
-                nomor_peserta,
-                master_kelas (nama_kelas)
-              )
-            )
-          `)
-          .eq('jadwal_ujian_id', id)
-          .order('nilai_total', { ascending: false });
-        
-        if (fallbackError) throw fallbackError;
-        
-        const flattened = (fallbackHasil || []).map(h => ({
+      if (hErr) throw hErr;
+
+      // 3. Ambil SELURUH Data Peserta & Kelas
+      // id di peserta_ujian = id profil siswa (tidak ada kolom siswa_id)
+      const { data: pesertaList, error: pErr } = await supabase
+        .from('peserta_ujian')
+        .select('id, nomor_peserta, master_kelas(nama_kelas)');
+      
+      if (pErr) throw pErr;
+
+      // 4. Mapping: siswa_id di hasil_nilai = id di peserta_ujian
+      const mappedHasil = (rawHasil || []).map(h => {
+        const p = pesertaList?.find(pl => pl.id === h.siswa_id);
+        return {
           ...h,
-          peserta_ujian: h.profiles?.peserta_ujian?.[0] || null
-        }));
-        setHasilList(flattened);
-      } else {
-        const flattened = (hasil || []).map(h => ({
-          ...h,
-          peserta_ujian: h.profiles?.peserta_ujian?.[0] || null
-        }));
-        setHasilList(flattened);
-      }
+          peserta_ujian: p || null
+        };
+      });
+
+      setHasilList(mappedHasil);
     } catch (err) {
+      console.error("Fetch Error:", err);
       toast.error('Gagal memuat hasil: ' + err.message);
     } finally {
       setLoading(false);

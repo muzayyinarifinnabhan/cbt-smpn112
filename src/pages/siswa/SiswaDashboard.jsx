@@ -44,7 +44,7 @@ export default function SiswaDashboard() {
               master_mapel (nama_mapel)
             )
           `)
-          .eq('bank_soal.kelas_id', detail.kelas_id)
+          .eq('kelas_id', detail.kelas_id)
           .is('guru_id', null) // Ujian admin tidak punya guru_id
           .eq('status_ujian', 'aktif')
           .order('waktu_mulai', { ascending: true });

@@ -337,16 +337,19 @@ export default function AdminBankSoal() {
 
                 {/* Kelas */}
                 <div className="space-y-1.5">
-                  <label className="text-sm font-bold text-slate-700">Kelas</label>
+                  <label className="text-sm font-bold text-slate-700">Kelas (Opsional)</label>
                   <select
-                    required
                     value={formData.kelas_id}
                     onChange={(e) => setFormData({...formData, kelas_id: e.target.value})}
                     className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm"
                   >
-                    <option value="">Pilih Kelas</option>
-                    {master.kelas.map(v => <option key={v.id} value={v.id}>{v.nama_kelas}</option>)}
+                    <option value="">Semua Kelas di Level Ini</option>
+                    {master.kelas
+                      .filter(v => !formData.level_id || v.level_id === formData.level_id)
+                      .map(v => <option key={v.id} value={v.id}>{v.nama_kelas}</option>)
+                    }
                   </select>
+                  <p className="text-[10px] text-slate-400 font-medium">* Kosongkan jika ingin digunakan untuk banyak kelas sekaligus</p>
                 </div>
 
                 {/* SECTION PG */}

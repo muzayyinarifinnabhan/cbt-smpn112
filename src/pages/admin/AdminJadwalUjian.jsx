@@ -348,8 +348,8 @@ export default function AdminJadwalUjian() {
                         setFormData({ 
                           ...formData, 
                           bank_soal_id: e.target.value,
-                          mapel_id: selectedBs?.mapel_id || '',
-                          kelas_id: selectedBs?.kelas_id || '',
+                          mapel_id: selectedBs?.mapel_id || formData.mapel_id,
+                          kelas_id: selectedBs?.kelas_id || formData.kelas_id,
                           kkm: selectedBs?.kkm || 70
                         });
                       }}
@@ -366,16 +366,26 @@ export default function AdminJadwalUjian() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-5 opacity-60 pointer-events-none">
-                <div className="space-y-1.5">
+              <div className="grid grid-cols-2 gap-5">
+                <div className="space-y-1.5 opacity-60 pointer-events-none">
                   <label className="text-[13px] font-black text-slate-700 ml-1">Mata Pelajaran</label>
                   <input readOnly className="w-full px-5 py-3.5 bg-slate-100 border border-slate-200 rounded-2xl font-bold text-slate-500 outline-none"
                     value={mapels.find(m => m.id === formData.mapel_id)?.nama_mapel || '-'} />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[13px] font-black text-slate-700 ml-1">Kelas</label>
-                  <input readOnly className="w-full px-5 py-3.5 bg-slate-100 border border-slate-200 rounded-2xl font-bold text-slate-500 outline-none"
-                    value={kelas.find(k => k.id === formData.kelas_id)?.nama_kelas || '-'} />
+                  <label className="text-[13px] font-black text-slate-700 ml-1">Kelas Peserta</label>
+                  <div className="relative">
+                    <select 
+                      required
+                      className="w-full pl-4 pr-10 py-3.5 bg-slate-50/80 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-bold text-slate-700 appearance-none cursor-pointer"
+                      value={formData.kelas_id}
+                      onChange={(e) => setFormData({ ...formData, kelas_id: e.target.value })}
+                    >
+                      <option value="">-- Pilih Kelas --</option>
+                      {kelas.map(k => <option key={k.id} value={k.id}>{k.nama_kelas}</option>)}
+                    </select>
+                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                  </div>
                 </div>
               </div>
 

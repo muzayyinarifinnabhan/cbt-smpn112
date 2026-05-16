@@ -13,6 +13,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [mode, setMode] = useState('siswa'); // 'siswa', 'admin', atau 'pengawas'
+  const [authType, setAuthType] = useState('login'); // 'login' or 'register'
 
   const { user, profile, setAuth } = useAuthStore();
 
@@ -32,92 +33,90 @@ export default function Login() {
     setError('');
 
     try {
-      if (mode === 'siswa') {
-        // --- LOGIC LOGIN SISWA (ROBUST MODE) ---
-        const cleanUsername = username.trim();
-        const cleanPassword = password.trim();
+      if (authType === 'login') {
+        if (mode === 'siswa') {
+          // --- LOGIC LOGIN SISWA (ROBUST MODE) ---
+          const cleanUsername = username.trim();
+          const cleanPassword = password.trim();
 
-        const { data: peserta, error: pesertaError } = await supabase
-          .from('peserta_ujian')
-          .select('*, profiles(*)')
-          .eq('nomor_peserta', cleanUsername)
-          .eq('password_plain', cleanPassword)
-          .maybeSingle();
+          const { data: peserta, error: pesertaError } = await supabase
+            .from('peserta_ujian')
+            .select('*, profiles(*)')
+            .eq('nomor_peserta', cleanUsername)
+            .eq('password_plain', cleanPassword)
+            .maybeSingle();
 
-        console.log('Debug Login Siswa:', { 
-          input: { cleanUsername, cleanPassword }, 
-          found: peserta, 
-          error: pesertaError 
-        });
+          if (pesertaError || !peserta) {
+            throw new Error('Nomor Peserta atau Password salah');
+          }
 
-        if (pesertaError || !peserta) {
-          throw new Error('Nomor Peserta atau Password salah');
-        }
+          if (!peserta.profiles) {
+            throw new Error('Data profil siswa tidak ditemukan. Silakan hubungi admin.');
+          }
 
-        if (!peserta.profiles) {
-          throw new Error('Data profil siswa tidak ditemukan. Silakan hubungi admin.');
-        }
+          setAuth(null, peserta.profiles);
+        } else {
+          // --- LOGIC LOGIN ADMIN / GURU / PENGAWAS ---
+          const cleanUsername = username.trim();
+          const cleanPassword = password.trim();
 
-        setAuth(null, peserta.profiles);
-      } else {
-        // --- LOGIC LOGIN ADMIN / GURU / PENGAWAS ---
-        const cleanUsername = username.trim();
-        const cleanPassword = password.trim();
+          if (mode === 'admin') {
+            // ADMIN / GURU
+            if (cleanUsername.includes('@')) {
+              const { data, error: authError } = await supabase.auth.signInWithPassword({
+                email: cleanUsername,
+                password: cleanPassword,
+              });
 
-        if (mode === 'admin') {
-          // ADMIN / GURU
-          if (cleanUsername.includes('@')) {
-            // Bisa jadi Admin login pakai email (Supabase Auth)
-            const { data, error: authError } = await supabase.auth.signInWithPassword({
-              email: cleanUsername,
-              password: cleanPassword,
-            });
+              if (!authError && data.session) {
+                let { data: profileData } = await supabase
+                  .from('profiles')
+                  .select('*')
+                  .eq('id', data.user.id)
+                  .single();
 
-            if (!authError && data.session) {
-              let { data: profileData } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', data.user.id)
-                .single();
-
-              if (profileData) {
-                setAuth(data.session, profileData);
-                return;
+                if (profileData) {
+                  setAuth(data.session, profileData);
+                  return;
+                }
               }
             }
+            
+            const { data: profileData, error: profError } = await supabase
+              .from('profiles')
+              .select('*')
+              .or(`username.eq.${cleanUsername}`)
+              .eq('password_plain', cleanPassword)
+              .in('role', ['admin', 'guru'])
+              .maybeSingle();
+
+            if (profError || !profileData) {
+              throw new Error('Email/Username atau Password salah');
+            }
+
+            setAuth(null, profileData);
+          } else if (mode === 'pengawas') {
+            // PENGAWAS
+            const { data: profileData, error: profError } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('username', cleanUsername)
+              .eq('password_plain', cleanPassword)
+              .eq('role', 'pengawas')
+              .maybeSingle();
+
+            if (profError || !profileData) {
+              throw new Error('Username atau Password salah');
+            }
+
+            setAuth(null, profileData);
           }
-          
-          // Jika Supabase Auth gagal atau bukan email, kita cek di profiles secara manual
-          // karena AdminDataAdministrator sekarang menyimpan admin baru di table profiles (dengan email di kolom username)
-          const { data: profileData, error: profError } = await supabase
-            .from('profiles')
-            .select('*')
-            .or(`username.eq.${cleanUsername}`)
-            .eq('password_plain', cleanPassword)
-            .in('role', ['admin', 'guru'])
-            .maybeSingle();
-
-          if (profError || !profileData) {
-            throw new Error('Email/Username atau Password salah');
-          }
-
-          setAuth(null, profileData);
-        } else if (mode === 'pengawas') {
-          // PENGAWAS
-          const { data: profileData, error: profError } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('username', cleanUsername)
-            .eq('password_plain', cleanPassword)
-            .eq('role', 'pengawas')
-            .maybeSingle();
-
-          if (profError || !profileData) {
-            throw new Error('Username atau Password salah');
-          }
-
-          setAuth(null, profileData);
         }
+      } else {
+        // --- LOGIC DAFTAR (REGISTER) ---
+        // Implementasi pendaftaran (UI demo atau real logic)
+        setError('Fitur Pendaftaran sedang dalam pengembangan.');
+        setLoading(false);
       }
     } catch (err) {
       console.error('Login Error:', err);
@@ -152,8 +151,33 @@ export default function Login() {
         {/* Bagian Bawah - Form */}
         <div className="bg-[#f8fafc] px-6 sm:px-8 py-8">
           
-          {/* Tab Pemilihan Mode Login */}
-          <div className="flex rounded-xl bg-slate-200/60 p-1 mb-6 gap-1">
+          {/* Main Auth Toggle (Masuk / Daftar) */}
+          <div className="flex items-center justify-center gap-6 mb-8 border-b border-slate-200 pb-4">
+            <button
+              onClick={() => { setAuthType('login'); setError(''); }}
+              className={clsx(
+                "text-lg font-bold transition-all relative pb-2",
+                authType === 'login' ? "text-indigo-600" : "text-slate-400 hover:text-slate-600"
+              )}
+            >
+              Masuk
+              {authType === 'login' && <div className="absolute bottom-0 left-0 w-full h-1 bg-indigo-600 rounded-full" />}
+            </button>
+            <button
+              onClick={() => { setAuthType('register'); setError(''); }}
+              className={clsx(
+                "text-lg font-bold transition-all relative pb-2",
+                authType === 'register' ? "text-indigo-600" : "text-slate-400 hover:text-slate-600"
+              )}
+            >
+              Daftar
+              {authType === 'register' && <div className="absolute bottom-0 left-0 w-full h-1 bg-indigo-600 rounded-full" />}
+            </button>
+          </div>
+
+          {/* Tab Pemilihan Mode Login - Hanya muncul jika mode login atau jika daftar siswa */}
+          {(authType === 'login' || (authType === 'register' && mode === 'siswa')) && (
+            <div className="flex rounded-xl bg-slate-200/60 p-1 mb-6 gap-1">
             <button
               onClick={() => { setMode('siswa'); setUsername(''); setPassword(''); setError(''); }}
               className={clsx(
@@ -181,7 +205,8 @@ export default function Login() {
             >
               <User className="w-4 h-4" /> Pengawas
             </button>
-          </div>
+            </div>
+          )}
 
           <form onSubmit={handleLogin} className="space-y-5">
             {error && (
@@ -245,7 +270,7 @@ export default function Login() {
               {loading ? 'Memproses...' : (
                 <>
                   <LogIn className="w-4 h-4" />
-                  Masuk
+                  {authType === 'login' ? 'Masuk' : 'Daftar Sekarang'}
                 </>
               )}
             </button>
